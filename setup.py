@@ -53,7 +53,7 @@ setup(
     zip_safe=True,
     maintainer='Guilherme Pascoale Godoy',
     maintainer_email='guilhermepascoale1911@gmail.com',
-    description='Pacote desenvolvido durante a disciplina SSC0712 - Programação de Robôs Móveis (2026).'
+    description='Pacote desenvolvido durante a disciplina SSC0712 - Programação de Robôs Móveis (2026).',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
