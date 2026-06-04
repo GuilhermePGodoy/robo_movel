@@ -314,7 +314,7 @@
 
   <gazebo>
     <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
-      <parameters>$(find prm_2026)/config/controller_config.yaml</parameters>
+      <parameters>$(find robo_movel)/config/controller_config.yaml</parameters>
     </plugin>
   </gazebo>
 

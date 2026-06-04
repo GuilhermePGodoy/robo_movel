@@ -14,7 +14,7 @@ def generate_launch_description():
     ld = LaunchDescription()
 
     urdf_path = PathJoinSubstitution([
-        FindPackageShare("prm_2026"),         # Diretório do pacote `prm_2026`
+        FindPackageShare("robo_movel"),         # Diretório do pacote `robo_movel`
         "description",                   # Subpasta onde está o modelo
         "robot.urdf.xacro"               # Nome do arquivo Xacro
     ])
@@ -37,7 +37,7 @@ def generate_launch_description():
     ))
 
     rviz_config_file = PathJoinSubstitution([
-        FindPackageShare("prm_2026"),
+        FindPackageShare("robo_movel"),
         "rviz",
         "urdf.rviz"
     ])
