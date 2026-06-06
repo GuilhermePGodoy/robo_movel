@@ -1,7 +1,6 @@
 from launch import LaunchDescription
-from launch.substitutions import PathJoinSubstitution, FindExecutable, LaunchConfiguration
+from launch.substitutions import PathJoinSubstitution, LaunchConfiguration
 from launch.actions import SetEnvironmentVariable, ExecuteProcess, DeclareLaunchArgument
-from launch.conditions import IfCondition
 
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
@@ -41,7 +40,7 @@ def generate_launch_description():
     # Nome do arquivo do mundo (SDF) a ser carregado
 
     # Recupera dos parametros ou utiliza o default
-    world_file_name =  world_file_name = LaunchConfiguration('world')
+    world_file_name = LaunchConfiguration('world')
 
     # Caminho completo para o arquivo do mundo
     world_path = PathJoinSubstitution([
@@ -51,26 +50,26 @@ def generate_launch_description():
     ])
 
 # Alguns teste utilizando cenários já existentes no gazebo
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/sensors_demo.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/heightmap.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/fuel.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/actor_crowd.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/auv_controls.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/buoyancy.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/fuel_textured_mesh.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/visualize_lidar.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/segmentation_camera.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/boundingbox_camera.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/spherical_coordinates.sdf'
-#    world_path='/usr/share/ignition/ignition-gazebo6/worlds/rolling_shapes.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/sensors_demo.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/heightmap.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/fuel.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/actor_crowd.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/auv_controls.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/buoyancy.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/fuel_textured_mesh.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/visualize_lidar.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/segmentation_camera.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/boundingbox_camera.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/spherical_coordinates.sdf'
+#    world_path='/usr/share/gz/gz-sim8/worlds/rolling_shapes.sdf'
 
     # ------------------------------------------------------
     # Inicialização do simulador Gazebo
     # ------------------------------------------------------
-    # Executa o comando: ign gazebo -r -v <verbosity> <world_path>
+    # Executa o comando: gz sim -r -v <verbosity> <world_path>
     # Inicia o Gazebo em modo headless (sem GUI), com nível de log definido.
     gazebo = ExecuteProcess(
-        cmd=['ruby', FindExecutable(name="ign"), 'gazebo', '-r', '-v', gz_verbosity, world_path],
+        cmd=['gz', 'sim', '-r', '-v', gz_verbosity, world_path],
         output='screen',
         additional_env=gz_env,
         shell=False,
@@ -79,16 +78,27 @@ def generate_launch_description():
     # ------------------------------------------------------
     # Configuração do caminho de recursos do Gazebo
     # ------------------------------------------------------
-    # Define a variável de ambiente IGN_GAZEBO_RESOURCE_PATH para que o Gazebo
+    # Define as variáveis de ambiente de recursos para que o Gazebo
     # consiga localizar os modelos personalizados armazenados no pacote.
     gz_models_path = ":".join([
         pkg_share,
-        os.path.join(pkg_share, "models")
+        os.path.join(pkg_share, "models"),
+        os.environ.get('GZ_SIM_RESOURCE_PATH', default=''),
+    ])
+    ign_models_path = ":".join([
+        pkg_share,
+        os.path.join(pkg_share, "models"),
+        os.environ.get('IGN_GAZEBO_RESOURCE_PATH', default=''),
     ])
 
     gz_set_env = SetEnvironmentVariable(
-        name="IGN_GAZEBO_RESOURCE_PATH",
+        name="GZ_SIM_RESOURCE_PATH",
         value=gz_models_path,
+    )
+
+    ign_set_env = SetEnvironmentVariable(
+        name="IGN_GAZEBO_RESOURCE_PATH",
+        value=ign_models_path,
     )
 
     # ------------------------------------------------------
@@ -100,9 +110,9 @@ def generate_launch_description():
         executable="parameter_bridge",
         name="ros_gz_bridge_world",
         arguments=[
-            "/sky_cam@sensor_msgs/msg/Image@ignition.msgs.Image",
+            "/sky_cam@sensor_msgs/msg/Image@gz.msgs.Image",
             # Necessário para controladores como diff_drive_controller
-            "/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock"
+            "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"
         ],
         output="screen",
     )
@@ -114,6 +124,7 @@ def generate_launch_description():
     return LaunchDescription([
         world_file_arg,
         gz_set_env,
+        ign_set_env,
         bridge,
         gazebo
     ])

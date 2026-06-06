@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable, ExecuteProcess
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, FindExecutable
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 import os
@@ -8,8 +8,8 @@ import os
 def generate_launch_description():
     declare_world_arg = DeclareLaunchArgument(
         name='world',
-        default_value='empty.world',
-        description='Nome do arquivo .world do mundo a ser carregado'
+        default_value='empty.sdf',
+        description='Nome do arquivo .sdf ou .world do mundo a ser carregado'
     )
 
     world_file = LaunchConfiguration('world')
@@ -22,15 +22,21 @@ def generate_launch_description():
         world_file
     ])
 
-    set_gazebo_model_path = SetEnvironmentVariable(
-        name='GAZEBO_MODEL_PATH',
-        value=os.path.join(pkg_share, "models")
+    set_gazebo_resource_path = SetEnvironmentVariable(
+        name='GZ_SIM_RESOURCE_PATH',
+        value=":".join([
+            pkg_share,
+            os.path.join(pkg_share, "models"),
+            os.environ.get('GZ_SIM_RESOURCE_PATH', default=''),
+        ])
     )
 
     gazebo = ExecuteProcess(
         cmd=[
-            FindExecutable(name='gazebo'),
-            '--verbose',
+            'gz',
+            'sim',
+            '-v',
+            '3',
             world_path
         ],
         output='screen'
@@ -38,6 +44,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         declare_world_arg,
-        set_gazebo_model_path,
+        set_gazebo_resource_path,
         gazebo
     ])

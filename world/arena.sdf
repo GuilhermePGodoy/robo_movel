@@ -11,15 +11,15 @@
       <real_time_update_rate>1000</real_time_update_rate>
     </physics>
 
-    <plugin name='ignition::gazebo::systems::Physics' filename='ignition-gazebo-physics-system'/>
-    <plugin name='ignition::gazebo::systems::UserCommands' filename='ignition-gazebo-user-commands-system'/>
-    <plugin name='ignition::gazebo::systems::SceneBroadcaster' filename='ignition-gazebo-scene-broadcaster-system'/>
+    <plugin name='gz::sim::systems::Physics' filename='gz-sim-physics-system'/>
+    <plugin name='gz::sim::systems::UserCommands' filename='gz-sim-user-commands-system'/>
+    <plugin name='gz::sim::systems::SceneBroadcaster' filename='gz-sim-scene-broadcaster-system'/>
     
-    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
     
-    <plugin filename="libignition-gazebo-contact-system.so" name="ignition::gazebo::systems::Contact">
+    <plugin filename="libgz-sim-contact-system.so" name="gz::sim::systems::Contact">
     </plugin>
 
     <scene>
@@ -69,7 +69,7 @@
       </link>
 
       <!-- Defefinindo label do chao como 10 -->    
-      <plugin name="ignition::gazebo::systems::Label" filename="ignition-gazebo-label-system">
+      <plugin name="gz::sim::systems::Label" filename="gz-sim-label-system">
         <label>10</label>
       </plugin>
     </model>
@@ -100,22 +100,22 @@
     </model>
 
     <include>
-      <uri>TurtlebotArena</uri>
+      <uri>model://TurtlebotArena</uri>
       <pose>0.0 0.0 0.0 0 0 0</pose>
 
       <!-- Defefinindo label das paredes da arena como 20 -->    
-      <plugin name="ignition::gazebo::systems::Label" filename="ignition-gazebo-label-system">
+      <plugin name="gz::sim::systems::Label" filename="gz-sim-label-system">
         <label>20</label>
       </plugin>
 
     </include>
 
     <include>
-      <uri>ObstaculosArenaV1</uri>
+      <uri>model://ObstaculosArenaV1</uri>
       <pose>0.0 0.0 0.0 0 0 0</pose>
 
       <!-- Defefinindo label de obstaculos como 30 -->    
-      <plugin name="ignition::gazebo::systems::Label" filename="ignition-gazebo-label-system">
+      <plugin name="gz::sim::systems::Label" filename="gz-sim-label-system">
         <label>30</label>
       </plugin>
 
@@ -179,7 +179,7 @@
       </link>
 
       <!-- Defefinindo label da flag como 40 -->
-      <plugin filename="ignition-gazebo-label-system" name="ignition::gazebo::systems::Label">
+      <plugin filename="gz-sim-label-system" name="gz::sim::systems::Label">
         <label>40</label>
       </plugin>
 
