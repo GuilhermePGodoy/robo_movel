@@ -101,20 +101,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    # Redireciona as mensagens do topico /cmd_vel para /diff_drive_base_controller/cmd_vel_unstamped (Conveniencia)
-    relay_cmd_vel = Node(
-        name="relay_cmd_vel",
-        package="topic_tools",
-        executable="relay",
-        parameters=[
-            {
-                "input_topic": "/cmd_vel",
-                "output_topic": "/diff_drive_base_controller/cmd_vel_unstamped",
-            }
-        ],
-        output="screen",
-    )
-
     # ------------------------------------------------------
     # RViz: visualização do robô
     # ------------------------------------------------------
@@ -199,14 +185,13 @@ def generate_launch_description():
         output="screen",
     )
 
-#  Casos vocês queiram carregar o controle do robô junto:
-#  Não esquecer de descomentar a linha no LaunchDescription
-#    controle= Node(
-#        package="robo_movel",
-#        executable="controle_robo",
-#        name="controle_do_robo",
-#        output="screen",
-#    )
+#  Nodo que controla o movimento do robô
+    controle = Node(
+        package="robo_movel",
+        executable="controle_robo",
+        name="controle_do_robo",
+        output="screen",
+    )
 
     # ------------------------------------------------------
     # Definição da descrição completa do lançamento
@@ -237,7 +222,6 @@ def generate_launch_description():
         odom_gt,
         robo_mapper,
         rviz_node,
-  #      relay_odom, # Nodos de redirecionamento de mensagens (Estamos usando apenas odom_gt agora)
-        relay_cmd_vel # Nodos de redirecionamento de mensagens
-  #      controle
+  #      relay_odom, # Nodo de redirecionamento de mensagens (Estamos usando apenas odom_gt agora)
+        controle
     ])

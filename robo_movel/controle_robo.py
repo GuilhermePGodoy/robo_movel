@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import math
+
 import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import LaserScan, Imu, Image
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import TwistStamped
 
 from scipy.spatial.transform import Rotation as R
 
@@ -18,12 +20,16 @@ class ControleRobo(Node):
         super().__init__('controle_robo')
 
         # Publisher para comando de velocidade
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(
+            TwistStamped,
+            '/diff_drive_base_controller/cmd_vel',
+            10,
+        )
 
         # Subscribers
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.create_subscription(Imu, '/imu', self.imu_callback, 10)
-        self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.create_subscription(Odometry, '/odom_gt', self.odom_callback, 10)
         self.create_subscription(Image, '/robot_cam/colored_map', self.camera_callback, 10)
 
         # Utilizado para converter imagens ROS -> OpenCV
@@ -36,22 +42,30 @@ class ControleRobo(Node):
         self.obstaculo_a_frente = False
 
     def scan_callback(self, msg: LaserScan):
-        # Verifica uma faixa estreita ao redor de 0° (frente)
-        num_ranges = len(msg.ranges)
-        if num_ranges == 0:
+        if not msg.ranges:
             return
 
-        # Índices de -30° a +30° (equivalente a 330 até 30)
-        indices_frente = list(range(330, 360)) + list(range(0, 31))
+        limite_frontal = math.radians(30.0)
+        distancias = []
 
-        # Filtra distancias
-        distancias = [msg.ranges[i] for i in indices_frente]
+        for indice, distancia in enumerate(msg.ranges):
+            angulo = msg.angle_min + indice * msg.angle_increment
+            angulo = math.atan2(math.sin(angulo), math.cos(angulo))
 
-        if distancias and min(distancias) < 0.5:
-            self.obstaculo_a_frente = True
-            self.get_logger().info('Obstáculo detectado a {:.2f}m à frente'.format(min(distancias)))
-        else:
-            self.obstaculo_a_frente = False
+            leitura_valida = (
+                math.isfinite(distancia)
+                and msg.range_min <= distancia <= msg.range_max
+            )
+            if abs(angulo) <= limite_frontal and leitura_valida:
+                distancias.append(distancia)
+
+        distancia_frontal = min(distancias, default=math.inf)
+        self.obstaculo_a_frente = distancia_frontal < 0.5
+
+        if self.obstaculo_a_frente:
+            self.get_logger().info(
+                f'Obstáculo detectado a {distancia_frontal:.2f} m à frente'
+            )
 
     def imu_callback(self, msg: Imu):
         # # Extraindo o quaternion da mensagem
@@ -114,13 +128,15 @@ class ControleRobo(Node):
                 self.get_logger().info(f'  Blob {i+1}: posição (x={cx}, y={cy})')
 
     def move_robot(self):
-        twist = Twist()
-        if not self.obstaculo_a_frente:
-            twist.linear.x = 0.1  # Move para frente
-        else:
-            twist.angular.z = -0.3  # Gira em torno do proprio eixo
+        cmd_vel = TwistStamped()
+        cmd_vel.header.stamp = self.get_clock().now().to_msg()
 
-        self.cmd_vel_pub.publish(twist)
+        if not self.obstaculo_a_frente:
+            cmd_vel.twist.linear.x = 0.1  # Move para frente
+        else:
+            cmd_vel.twist.angular.z = -0.3  # Gira em torno do proprio eixo
+
+        self.cmd_vel_pub.publish(cmd_vel)
 
 
 def main(args=None):
