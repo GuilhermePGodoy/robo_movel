@@ -40,6 +40,9 @@ class DetectorBandeira(Node):
         self.declare_parameter('label_bandeira_azul', 25)
         self.declare_parameter('area_minima_bandeira', 25.0)
         self.declare_parameter('tolerancia_cor_bandeira', 0.0)
+        self.declare_parameter('debug_detector', True)
+        self.declare_parameter('publicar_mascara_debug', True)
+        self.declare_parameter('periodo_log_debug', 1.0)
 
         self.label_bandeira_azul = int(
             self.get_parameter('label_bandeira_azul').value
@@ -50,6 +53,15 @@ class DetectorBandeira(Node):
         self.tolerancia_cor_bandeira = float(
             self.get_parameter('tolerancia_cor_bandeira').value
         )
+        self.debug_detector = bool(
+            self.get_parameter('debug_detector').value
+        )
+        self.publicar_mascara_debug = bool(
+            self.get_parameter('publicar_mascara_debug').value
+        )
+        self.periodo_log_debug = float(
+            self.get_parameter('periodo_log_debug').value
+        )
 
         self.bridge = CvBridge()
         self.ultimo_log_por_chave = {}
@@ -57,6 +69,16 @@ class DetectorBandeira(Node):
         self.publisher = self.create_publisher(
             Float32MultiArray,
             '/bandeira_azul/deteccao',
+            10,
+        )
+        self.debug_info_pub = self.create_publisher(
+            Float32MultiArray,
+            '/bandeira_azul/debug_info',
+            10,
+        )
+        self.mascara_debug_pub = self.create_publisher(
+            Image,
+            '/bandeira_azul/debug_mask',
             10,
         )
         self.create_subscription(
@@ -68,7 +90,9 @@ class DetectorBandeira(Node):
 
         self.get_logger().info(
             'Detector da bandeira azul iniciado: procurando label '
-            f'{self.label_bandeira_azul} no labels_map.'
+            f'{self.label_bandeira_azul} no labels_map. '
+            'Debug visual em /bandeira_azul/debug_mask e '
+            '/bandeira_azul/debug_info.'
         )
 
     def camera_callback(self, msg: Image):
@@ -85,6 +109,7 @@ class DetectorBandeira(Node):
 
         altura, largura = frame.shape[:2]
         mask, origem_segmentacao = self.criar_mascara_bandeira(frame, msg.encoding)
+        pixels_mascara = int(cv2.countNonZero(mask))
 
         contornos, _ = cv2.findContours(
             mask,
@@ -95,11 +120,42 @@ class DetectorBandeira(Node):
             contorno for contorno in contornos
             if cv2.contourArea(contorno) >= self.area_minima_bandeira
         ]
+        maior_area = max(
+            [cv2.contourArea(contorno) for contorno in contornos],
+            default=0.0,
+        )
+
+        if self.publicar_mascara_debug:
+            self.publicar_mascara(mask, msg)
+
+        self.publicar_debug_info(
+            pixels_mascara=pixels_mascara,
+            total_contornos=len(contornos),
+            contornos_validos=len(contornos_validos),
+            maior_area=maior_area,
+            largura=largura,
+            altura=altura,
+        )
+        self.log_debug_frame(
+            frame=frame,
+            encoding=msg.encoding,
+            origem_segmentacao=origem_segmentacao,
+            pixels_mascara=pixels_mascara,
+            total_contornos=len(contornos),
+            contornos_validos=len(contornos_validos),
+            maior_area=maior_area,
+        )
 
         if not contornos_validos:
             self.log_periodico(
                 'sem_bandeira',
-                'Camera: nenhuma regiao com label da bandeira azul.',
+                (
+                    'Camera: nenhuma regiao valida da bandeira azul. '
+                    f'origem={origem_segmentacao}, '
+                    f'pixels_label={pixels_mascara}, '
+                    f'contornos={len(contornos)}, maior_area={maior_area:.1f}, '
+                    f'area_minima={self.area_minima_bandeira:.1f}.'
+                ),
                 periodo=3.0,
             )
             return
@@ -169,6 +225,90 @@ class DetectorBandeira(Node):
         ).astype(np.uint8)
         return cv2.inRange(frame_bgr, lower, upper), 'colored_map=#00f2ab'
 
+    def log_debug_frame(
+        self,
+        frame,
+        encoding: str,
+        origem_segmentacao: str,
+        pixels_mascara: int,
+        total_contornos: int,
+        contornos_validos: int,
+        maior_area: float,
+    ):
+        if not self.debug_detector:
+            return
+
+        labels_resumo = self.resumir_labels(frame)
+        canais = frame.shape[2] if frame.ndim == 3 else 1
+        self.log_periodico(
+            'debug_frame',
+            (
+                'Debug detector: '
+                f'encoding={encoding}, dtype={frame.dtype}, '
+                f'shape={frame.shape}, canais={canais}, '
+                f'origem={origem_segmentacao}, '
+                f'label_alvo={self.label_bandeira_azul}, '
+                f'pixels_alvo={pixels_mascara}, '
+                f'contornos={total_contornos}, validos={contornos_validos}, '
+                f'maior_area={maior_area:.1f}, '
+                f'labels_mais_comuns={labels_resumo}.'
+            ),
+            periodo=self.periodo_log_debug,
+        )
+
+    def resumir_labels(self, frame):
+        if not self.imagem_tem_labels_numericos(frame):
+            return 'n/a: imagem colorida'
+
+        labels = self.extrair_canal_de_labels(frame)
+        valores, contagens = np.unique(labels, return_counts=True)
+        ordem = np.argsort(contagens)[::-1][:8]
+        pares = [
+            f'{int(valores[i])}:{int(contagens[i])}'
+            for i in ordem
+        ]
+        return ','.join(pares)
+
+    def publicar_debug_info(
+        self,
+        pixels_mascara: int,
+        total_contornos: int,
+        contornos_validos: int,
+        maior_area: float,
+        largura: int,
+        altura: int,
+    ):
+        if not self.debug_detector:
+            return
+
+        msg = Float32MultiArray()
+        msg.data = [
+            float(self.label_bandeira_azul),
+            float(pixels_mascara),
+            float(total_contornos),
+            float(contornos_validos),
+            float(maior_area),
+            float(self.area_minima_bandeira),
+            float(largura),
+            float(altura),
+        ]
+        self.debug_info_pub.publish(msg)
+
+    def publicar_mascara(self, mask, msg_original: Image):
+        try:
+            msg_mask = self.bridge.cv2_to_imgmsg(mask, encoding='mono8')
+        except Exception as exc:
+            self.log_periodico(
+                'erro_mascara_debug',
+                f'Debug detector: falha ao publicar mascara: {exc}',
+                periodo=2.0,
+                nivel='warn',
+            )
+            return
+
+        msg_mask.header = msg_original.header
+        self.mascara_debug_pub.publish(msg_mask)
+
     def publicar_deteccao(
         self,
         erro_x: float,
@@ -198,10 +338,22 @@ class DetectorBandeira(Node):
         self.publisher.publish(msg)
 
     def imagem_tem_labels_numericos(self, frame):
-        return frame.ndim == 2 or (
-            frame.ndim == 3
-            and frame.shape[2] == 1
-        )
+        if frame.ndim == 2:
+            return True
+
+        if frame.ndim == 3 and frame.shape[2] == 1:
+            return True
+
+        # Em alguns fluxos do ros_gz_bridge / cv_bridge, o labels_map chega
+        # como rgb8/bgr8 cinza: a label 25 aparece como pixel (25, 25, 25).
+        # Ainda e um mapa numerico, so veio repetido nos tres canais.
+        if frame.ndim == 3 and frame.shape[2] >= 3:
+            return (
+                np.array_equal(frame[:, :, 0], frame[:, :, 1])
+                and np.array_equal(frame[:, :, 1], frame[:, :, 2])
+            )
+
+        return False
 
     def extrair_canal_de_labels(self, frame):
         if frame.ndim == 3:

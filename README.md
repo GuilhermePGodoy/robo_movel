@@ -122,6 +122,9 @@ Com a missao rodando, estes comandos ajudam a entender o comportamento:
 
 ```bash
 ros2 topic echo /bandeira_azul/deteccao
+ros2 topic echo /bandeira_azul/debug_info
+ros2 topic hz /robot_cam/labels_map
+ros2 run rqt_image_view rqt_image_view /bandeira_azul/debug_mask
 ros2 topic echo /scan --once
 ros2 topic echo /grid_map --once
 ros2 topic echo /diff_drive_base_controller/cmd_vel
@@ -130,7 +133,10 @@ ros2 topic echo /gripper_controller/commands
 
 Os logs do no `controle_do_robo` informam transicoes de estado, motivo da
 transicao, erro visual da bandeira, distancia frontal e comandos de velocidade.
-Os logs do `detector_bandeira` informam quando a label 25 aparece na camera.
+Os logs do `detector_bandeira` informam encoding, formato da imagem, labels
+mais comuns, quantidade de pixels da label `25`, contornos encontrados e maior
+area. No `/bandeira_azul/debug_mask`, pixels brancos indicam onde o detector
+enxerga a bandeira azul.
 
 ## Observacoes
 

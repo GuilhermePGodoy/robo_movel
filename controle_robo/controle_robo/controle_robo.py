@@ -546,6 +546,20 @@ class ControleRobo(Node):
             )
             return
 
+        if (
+            self.obstaculo_a_frente
+            and self.obstaculo_deve_ser_desviado_no_posicionamento()
+        ):
+            self.trocar_estado(
+                EstadoMissao.DESVIANDO_OBSTACULO,
+                (
+                    'obstaculo inesperado durante posicionamento '
+                    f'({self.distancia_frontal:.2f} m); '
+                    'bandeira ainda nao esta enquadrada como alvo de coleta'
+                ),
+            )
+            return
+
         det = self.deteccao_bandeira
         angular = self.controle_angular_para_bandeira()
 
@@ -611,11 +625,40 @@ class ControleRobo(Node):
         det = self.deteccao_bandeira
         centralizada = abs(det.erro_x) <= self.erro_alinhamento_bandeira
         proxima_por_imagem = det.area_relativa >= self.area_coleta_bandeira
+        area_minima_para_lidar = max(
+            self.area_posicionamento_bandeira,
+            self.area_coleta_bandeira * 0.5,
+        )
         proxima_por_lidar = (
             self.distancia_frontal <= self.distancia_coleta
-            and det.area_relativa >= self.area_posicionamento_bandeira
+            and det.area_relativa >= area_minima_para_lidar
         )
         return centralizada and (proxima_por_imagem or proxima_por_lidar)
+
+    def obstaculo_deve_ser_desviado_no_posicionamento(self):
+        det = self.deteccao_bandeira
+
+        # Quando a bandeira esta centralizada e suficientemente grande na
+        # imagem, o "obstaculo" visto pelo LIDAR provavelmente e a propria
+        # bandeira ou sua base. Nesse caso seguimos no ajuste fino.
+        alvo_de_coleta_provavel = (
+            abs(det.erro_x) <= self.erro_alinhamento_bandeira
+            and det.area_relativa >= self.area_posicionamento_bandeira
+        )
+        if alvo_de_coleta_provavel:
+            self.log_periodico(
+                'posicionamento_lidar_alvo',
+                (
+                    'Posicionamento: LIDAR viu algo a frente, mas a bandeira '
+                    'esta centralizada/grande; mantendo aproximacao fina. '
+                    f'frente={self.formatar_distancia(self.distancia_frontal)}, '
+                    f'area={det.area_relativa:.3f}, erro={det.erro_x:+.2f}.'
+                ),
+                periodo=1.0,
+            )
+            return False
+
+        return True
 
     def controle_angular_para_bandeira(self):
         # Erro positivo significa que a bandeira esta para a direita da imagem;

@@ -7,8 +7,8 @@ launch:
   use_sim_time: true
 
   # Pequenos atrasos para dar tempo do Gazebo, spawn e controladores subirem.
-  atraso_carrega_robo: 3.0
-  atraso_controle: 12.0
+  atraso_carrega_robo: 1.0
+  atraso_controle: 3.0
 
   topico_cmd_vel: /diff_drive_base_controller/cmd_vel
   topico_scan: /scan
@@ -16,13 +16,15 @@ launch:
   topico_odom: /odom_gt
   topico_camera: /robot_cam/labels_map
   topico_deteccao_bandeira: /bandeira_azul/deteccao
+  topico_debug_info_bandeira: /bandeira_azul/debug_info
+  topico_debug_mask_bandeira: /bandeira_azul/debug_mask
   topico_garra: /gripper_controller/commands
 
 controle_robo:
   ros__parameters:
     velocidade_linear: 0.3
-    velocidade_angular_desvio: -0.3
-    distancia_obstaculo: 1.0
+    velocidade_angular_desvio: -0.5
+    distancia_obstaculo: 0.5
     angulo_frontal_graus: 30.0
 
     velocidade_exploracao: 0.3
@@ -32,7 +34,7 @@ controle_robo:
     fator_velocidade_proxima: 0.55
 
     # Curva suave de exploracao para varrer a camera sem alvo conhecido.
-    amplitude_varredura_camera: 0.18
+    amplitude_varredura_camera: 0.15
 
     velocidade_giro_busca: 0.45
     ganho_angular_bandeira: 0.9
@@ -41,12 +43,12 @@ controle_robo:
     area_minima_bandeira: 25.0
     area_posicionamento_bandeira: 0.02
     area_coleta_bandeira: 0.07
-    distancia_posicionamento: 0.9
-    distancia_coleta: 0.45
+    distancia_posicionamento: 0.5
+    distancia_coleta: 0.35
 
     tempo_perda_bandeira: 1.0
     tempo_reexploracao: 3.0
-    tempo_minimo_desvio: 0.8
+    tempo_minimo_desvio: 1.5
 
     habilitar_garra: true
     garra_extensao_aberta: 0.0
@@ -58,3 +60,6 @@ controle_robo:
 
     label_bandeira_azul: 25
     tolerancia_cor_bandeira: 0.0
+    debug_detector: false
+    publicar_mascara_debug: false
+    periodo_log_debug: 1.0

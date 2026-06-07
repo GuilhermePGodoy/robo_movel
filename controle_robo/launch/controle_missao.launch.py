@@ -41,12 +41,17 @@ CONFIGURACOES_CONTROLE = [
     'garra_esquerda_captura',
     'label_bandeira_azul',
     'tolerancia_cor_bandeira',
+    'debug_detector',
+    'publicar_mascara_debug',
+    'periodo_log_debug',
     'topico_cmd_vel',
     'topico_scan',
     'topico_imu',
     'topico_odom',
     'topico_camera',
     'topico_deteccao_bandeira',
+    'topico_debug_info_bandeira',
+    'topico_debug_mask_bandeira',
     'topico_garra',
 ]
 
@@ -227,6 +232,21 @@ def generate_launch_description():
         default_value='0.0',
         description='Tolerancia BGR usada somente no fallback colored_map',
     )
+    debug_detector_arg = DeclareLaunchArgument(
+        'debug_detector',
+        default_value='true',
+        description='Ativa logs e topico numerico de debug do detector',
+    )
+    publicar_mascara_debug_arg = DeclareLaunchArgument(
+        'publicar_mascara_debug',
+        default_value='true',
+        description='Publica a mascara binaria da bandeira azul',
+    )
+    periodo_log_debug_arg = DeclareLaunchArgument(
+        'periodo_log_debug',
+        default_value='1.0',
+        description='Periodo em segundos dos logs detalhados do detector',
+    )
 
     topico_cmd_vel_arg = DeclareLaunchArgument(
         'topico_cmd_vel',
@@ -258,6 +278,16 @@ def generate_launch_description():
         default_value='/bandeira_azul/deteccao',
         description='Topico publicado pelo detector visual da bandeira azul',
     )
+    topico_debug_info_bandeira_arg = DeclareLaunchArgument(
+        'topico_debug_info_bandeira',
+        default_value='/bandeira_azul/debug_info',
+        description='Topico com contadores numericos do detector da bandeira',
+    )
+    topico_debug_mask_bandeira_arg = DeclareLaunchArgument(
+        'topico_debug_mask_bandeira',
+        default_value='/bandeira_azul/debug_mask',
+        description='Topico com mascara mono8 da label detectada',
+    )
     topico_garra_arg = DeclareLaunchArgument(
         'topico_garra',
         default_value='/gripper_controller/commands',
@@ -287,6 +317,18 @@ def generate_launch_description():
                     LaunchConfiguration('tolerancia_cor_bandeira'),
                     value_type=float,
                 ),
+                'debug_detector': ParameterValue(
+                    LaunchConfiguration('debug_detector'),
+                    value_type=bool,
+                ),
+                'publicar_mascara_debug': ParameterValue(
+                    LaunchConfiguration('publicar_mascara_debug'),
+                    value_type=bool,
+                ),
+                'periodo_log_debug': ParameterValue(
+                    LaunchConfiguration('periodo_log_debug'),
+                    value_type=float,
+                ),
             }
         ],
         remappings=[
@@ -294,6 +336,14 @@ def generate_launch_description():
             (
                 '/bandeira_azul/deteccao',
                 LaunchConfiguration('topico_deteccao_bandeira'),
+            ),
+            (
+                '/bandeira_azul/debug_info',
+                LaunchConfiguration('topico_debug_info_bandeira'),
+            ),
+            (
+                '/bandeira_azul/debug_mask',
+                LaunchConfiguration('topico_debug_mask_bandeira'),
             ),
         ],
     )
@@ -473,12 +523,17 @@ def generate_launch_description():
         garra_esquerda_captura_arg,
         label_bandeira_azul_arg,
         tolerancia_cor_bandeira_arg,
+        debug_detector_arg,
+        publicar_mascara_debug_arg,
+        periodo_log_debug_arg,
         topico_cmd_vel_arg,
         topico_scan_arg,
         topico_imu_arg,
         topico_odom_arg,
         topico_camera_arg,
         topico_deteccao_bandeira_arg,
+        topico_debug_info_bandeira_arg,
+        topico_debug_mask_bandeira_arg,
         topico_garra_arg,
         detector_bandeira,
         controle,
