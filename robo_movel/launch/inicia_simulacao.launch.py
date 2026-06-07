@@ -20,9 +20,6 @@ def generate_launch_description():
         ])
     }
 
-    # Nível de verbosidade do Gazebo (0: silencioso, 4: mais detalhado)
-    gz_verbosity = '3'
-
     # ------------------------------------------------------
     # Caminho para o mundo a ser carregado
     # ------------------------------------------------------
@@ -32,6 +29,16 @@ def generate_launch_description():
         'world',
         default_value='arena_cilindros.sdf',
         description='Nome do arquivo .sdf do mundo a ser carregado'
+    )
+    gz_update_rate_arg = DeclareLaunchArgument(
+        'gz_update_rate',
+        default_value='2000',
+        description='Taxa de atualizacao alvo do Gazebo em Hz'
+    )
+    gz_verbosity_arg = DeclareLaunchArgument(
+        'gz_verbosity',
+        default_value='3',
+        description='Nivel de verbosidade do Gazebo (0 a 4)'
     )
 
     # Encontra o diretório de instalação do pacote 'robo_movel'.
@@ -66,10 +73,19 @@ def generate_launch_description():
     # ------------------------------------------------------
     # Inicialização do simulador Gazebo
     # ------------------------------------------------------
-    # Executa o comando: gz sim -r -v <verbosity> <world_path>
-    # Inicia o Gazebo em modo headless (sem GUI), com nível de log definido.
+    # Executa o comando: gz sim -r -v <verbosity> -z <update_rate> <world_path>
+    # A opcao -z define a taxa alvo de atualizacao do servidor Gazebo.
     gazebo = ExecuteProcess(
-        cmd=['gz', 'sim', '-r', '-v', gz_verbosity, world_path],
+        cmd=[
+            'gz',
+            'sim',
+            '-r',
+            '-v',
+            LaunchConfiguration('gz_verbosity'),
+            '-z',
+            LaunchConfiguration('gz_update_rate'),
+            world_path,
+        ],
         output='screen',
         additional_env=gz_env,
         shell=False,
@@ -123,6 +139,8 @@ def generate_launch_description():
     # Inclui as configurações de ambiente, a ponte e o lançamento do Gazebo.
     return LaunchDescription([
         world_file_arg,
+        gz_update_rate_arg,
+        gz_verbosity_arg,
         gz_set_env,
         ign_set_env,
         bridge,
