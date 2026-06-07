@@ -7,15 +7,12 @@ import time
 import rclpy
 from rclpy.node import Node
 
-from sensor_msgs.msg import LaserScan, Imu, Image
+from sensor_msgs.msg import LaserScan, Imu
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TwistStamped
+from std_msgs.msg import Float32MultiArray, Float64MultiArray
 
 from scipy.spatial.transform import Rotation as R
-
-from cv_bridge import CvBridge
-import cv2
-import numpy as np
 
 
 class EstadoMissao(Enum):
@@ -57,6 +54,8 @@ class ControleRobo(Node):
         self.deteccao_bandeira = DeteccaoBandeira()
         self.ultimo_instante_bandeira = None
         self.ultimo_erro_bandeira = 0.0
+        self.garra_aberta = False
+        self.garra_fechada = False
 
         # Percepcao de obstaculos pelo LIDAR.
         self.obstaculo_a_frente = False
@@ -76,15 +75,22 @@ class ControleRobo(Node):
             '/diff_drive_base_controller/cmd_vel',
             10,
         )
+        self.garra_pub = self.create_publisher(
+            Float64MultiArray,
+            '/gripper_controller/commands',
+            10,
+        )
 
         # Subscribers
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.create_subscription(Imu, '/imu', self.imu_callback, 10)
         self.create_subscription(Odometry, '/odom_gt', self.odom_callback, 10)
-        self.create_subscription(Image, '/robot_cam/labels_map', self.camera_callback, 10)
-
-        # Utilizado para converter imagens ROS -> OpenCV
-        self.bridge = CvBridge()
+        self.create_subscription(
+            Float32MultiArray,
+            '/bandeira_azul/deteccao',
+            self.deteccao_bandeira_callback,
+            10,
+        )
 
         # Timer para enviar comandos continuamente
         self.timer = self.create_timer(0.1, self.executar_maquina_estados)
@@ -105,10 +111,13 @@ class ControleRobo(Node):
         self.declare_parameter('distancia_velocidade_livre', 1.8)
         self.declare_parameter('fator_velocidade_livre', 1.35)
         self.declare_parameter('fator_velocidade_proxima', 0.45)
+        self.declare_parameter('x_alvo_exploracao', 8.0)
+        self.declare_parameter('y_alvo_exploracao', 0.0)
+        self.declare_parameter('ganho_orientacao_exploracao', 0.45)
+        self.declare_parameter('amplitude_varredura_camera', 0.18)
         self.declare_parameter('velocidade_giro_busca', 0.25)
         self.declare_parameter('ganho_angular_bandeira', 0.9)
         self.declare_parameter('erro_alinhamento_bandeira', 0.12)
-        self.declare_parameter('area_minima_bandeira', 25.0)
         self.declare_parameter('area_posicionamento_bandeira', 0.02)
         self.declare_parameter('area_coleta_bandeira', 0.07)
         self.declare_parameter('distancia_posicionamento', 0.9)
@@ -116,8 +125,13 @@ class ControleRobo(Node):
         self.declare_parameter('tempo_perda_bandeira', 1.0)
         self.declare_parameter('tempo_reexploracao', 3.0)
         self.declare_parameter('tempo_minimo_desvio', 0.8)
-        self.declare_parameter('label_bandeira_azul', 25)
-        self.declare_parameter('tolerancia_cor_bandeira', 0.0)
+        self.declare_parameter('habilitar_garra', True)
+        self.declare_parameter('garra_extensao_aberta', 0.0)
+        self.declare_parameter('garra_direita_aberta', -0.06)
+        self.declare_parameter('garra_esquerda_aberta', 0.06)
+        self.declare_parameter('garra_extensao_captura', 0.0)
+        self.declare_parameter('garra_direita_captura', 0.0)
+        self.declare_parameter('garra_esquerda_captura', 0.0)
 
         self.velocidade_linear = float(
             self.get_parameter('velocidade_linear').value
@@ -151,6 +165,18 @@ class ControleRobo(Node):
             0.05,
             1.0,
         )
+        self.x_alvo_exploracao = float(
+            self.get_parameter('x_alvo_exploracao').value
+        )
+        self.y_alvo_exploracao = float(
+            self.get_parameter('y_alvo_exploracao').value
+        )
+        self.ganho_orientacao_exploracao = float(
+            self.get_parameter('ganho_orientacao_exploracao').value
+        )
+        self.amplitude_varredura_camera = abs(float(
+            self.get_parameter('amplitude_varredura_camera').value
+        ))
         self.velocidade_giro_busca = abs(float(
             self.get_parameter('velocidade_giro_busca').value
         ))
@@ -159,9 +185,6 @@ class ControleRobo(Node):
         )
         self.erro_alinhamento_bandeira = float(
             self.get_parameter('erro_alinhamento_bandeira').value
-        )
-        self.area_minima_bandeira = float(
-            self.get_parameter('area_minima_bandeira').value
         )
         self.area_posicionamento_bandeira = float(
             self.get_parameter('area_posicionamento_bandeira').value
@@ -184,12 +207,19 @@ class ControleRobo(Node):
         self.tempo_minimo_desvio = float(
             self.get_parameter('tempo_minimo_desvio').value
         )
-        self.label_bandeira_azul = int(
-            self.get_parameter('label_bandeira_azul').value
+        self.habilitar_garra = bool(
+            self.get_parameter('habilitar_garra').value
         )
-        self.tolerancia_cor_bandeira = float(
-            self.get_parameter('tolerancia_cor_bandeira').value
-        )
+        self.comando_garra_aberta = [
+            float(self.get_parameter('garra_extensao_aberta').value),
+            float(self.get_parameter('garra_direita_aberta').value),
+            float(self.get_parameter('garra_esquerda_aberta').value),
+        ]
+        self.comando_garra_captura = [
+            float(self.get_parameter('garra_extensao_captura').value),
+            float(self.get_parameter('garra_direita_captura').value),
+            float(self.get_parameter('garra_esquerda_captura').value),
+        ]
 
     def scan_callback(self, msg: LaserScan):
         if not msg.ranges:
@@ -282,131 +312,44 @@ class ControleRobo(Node):
         ]
         self.yaw = R.from_quat(quat).as_euler('xyz', degrees=False)[2]
 
-    def camera_callback(self, msg: Image):
-        try:
-            # Usa passthrough para preservar o valor numerico no labels_map.
-            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-        except Exception as exc:
+    def deteccao_bandeira_callback(self, msg: Float32MultiArray):
+        if len(msg.data) < 10:
             self.log_periodico(
-                'erro_camera',
-                f'Camera: falha ao converter imagem segmentada: {exc}',
+                'deteccao_invalida',
+                'Deteccao: mensagem incompleta recebida do detector.',
                 periodo=2.0,
                 nivel='warn',
             )
             return
 
-        altura, largura = frame.shape[:2]
-
-        if self.imagem_tem_labels_numericos(frame):
-            # Caminho preferencial: labels_map. Aqui cada pixel carrega a
-            # label semantica do objeto; a bandeira azul e a label 25.
-            labels = self.extrair_canal_de_labels(frame)
-            mask = np.where(
-                labels == self.label_bandeira_azul,
-                255,
-                0,
-            ).astype(np.uint8)
-            origem_segmentacao = f'labels_map={self.label_bandeira_azul}'
-        else:
-            # Fallback para colored_map. Mantido para debug/remap manual, mas
-            # o launch padrao usa labels_map para evitar falso positivo por cor.
-            frame_bgr = self.garantir_bgr(frame, msg.encoding)
-            target_color = np.array([171, 242, 0], dtype=np.uint8)
-            tolerancia = int(self.tolerancia_cor_bandeira)
-            lower = np.clip(
-                target_color.astype(int) - tolerancia,
-                0,
-                255,
-            ).astype(np.uint8)
-            upper = np.clip(
-                target_color.astype(int) + tolerancia,
-                0,
-                255,
-            ).astype(np.uint8)
-            mask = cv2.inRange(frame_bgr, lower, upper)
-            origem_segmentacao = 'colored_map=#00f2ab'
-
-        # # Mostra a máscara em uma janela para debug
-        # cv2.imshow('Mascara de Blobs #00f2ab', mask)
-        # cv2.waitKey(1)  # Tempo mínimo para a janela atualizar (1 ms)
-
-        # Detecta contornos (blobs)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        contornos_validos = [
-            cnt for cnt in contours
-            if cv2.contourArea(cnt) >= self.area_minima_bandeira
-        ]
-
-        if not contornos_validos:
+        visivel = msg.data[0] >= 0.5
+        if not visivel:
             return
-
-        maior_contorno = max(contornos_validos, key=cv2.contourArea)
-        area = cv2.contourArea(maior_contorno)
-        x, y, w, h = cv2.boundingRect(maior_contorno)
-        momentos = cv2.moments(maior_contorno)
-
-        if momentos['m00'] != 0:
-            centro_x = momentos['m10'] / momentos['m00']
-            centro_y = momentos['m01'] / momentos['m00']
-        else:
-            centro_x = x + w / 2
-            centro_y = y + h / 2
-
-        erro_x = (centro_x - largura / 2) / (largura / 2)
-        area_relativa = area / float(largura * altura)
 
         self.deteccao_bandeira = DeteccaoBandeira(
             visivel=True,
-            centro_x=centro_x,
-            centro_y=centro_y,
-            erro_x=erro_x,
-            area=area,
-            area_relativa=area_relativa,
-            largura=w,
-            altura=h,
+            erro_x=float(msg.data[1]),
+            area_relativa=float(msg.data[2]),
+            area=float(msg.data[3]),
+            centro_x=float(msg.data[4]),
+            centro_y=float(msg.data[5]),
+            largura=int(msg.data[6]),
+            altura=int(msg.data[7]),
         )
-        self.ultimo_instante_bandeira = self.get_clock().now()
-        self.ultimo_erro_bandeira = erro_x
+        # Usa tempo monotonic para a validade da deteccao nao depender do
+        # relogio simulado durante pausas ou atrasos iniciais do Gazebo.
+        self.ultimo_instante_bandeira = time.monotonic()
+        self.ultimo_erro_bandeira = self.deteccao_bandeira.erro_x
 
         self.log_periodico(
-            'camera_bandeira',
+            'deteccao_bandeira',
             (
-                'Camera: bandeira azul visivel '
-                f'({origem_segmentacao}) '
-                f'cx={centro_x:.0f}/{largura}, erro={erro_x:+.2f}, '
-                f'area={area:.0f}px ({area_relativa:.3f}).'
+                'Deteccao: alvo visual recebido '
+                f'erro={self.deteccao_bandeira.erro_x:+.2f}, '
+                f'area={self.deteccao_bandeira.area_relativa:.3f}.'
             ),
             periodo=1.0,
         )
-
-    def imagem_tem_labels_numericos(self, frame):
-        # labels_map costuma chegar como imagem mono, preservando o numero
-        # da label em cada pixel. colored_map chega como imagem RGB/BGR.
-        return frame.ndim == 2 or (
-            frame.ndim == 3
-            and frame.shape[2] == 1
-        )
-
-    def extrair_canal_de_labels(self, frame):
-        if frame.ndim == 3:
-            return frame[:, :, 0]
-        return frame
-
-    def garantir_bgr(self, frame, encoding: str):
-        encoding = encoding.lower()
-
-        if frame.ndim == 2:
-            return cv2.cvtColor(frame.astype(np.uint8), cv2.COLOR_GRAY2BGR)
-
-        if encoding == 'rgb8':
-            return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        if encoding == 'rgba8':
-            return cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-        if encoding == 'bgra8':
-            return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-
-        return frame
 
     def executar_maquina_estados(self):
         if self.estado_atual == EstadoMissao.EXPLORANDO:
@@ -425,6 +368,8 @@ class ControleRobo(Node):
             self.estado_capturando_bandeira()
 
     def estado_explorando(self):
+        self.abrir_garra()
+
         if self.bandeira_recente():
             self.trocar_estado(
                 EstadoMissao.BANDEIRA_DETECTADA,
@@ -443,9 +388,9 @@ class ControleRobo(Node):
             )
             return
 
-        # Movimento de exploracao em curva suave para varrer a camera.
-        fase = math.sin(time.monotonic() * 0.55)
-        angular = self.limitar(0.15 * fase, -0.18, 0.18)
+        # Movimento de exploracao: avanca em direcao ao lado azul da arena,
+        # mas soma uma varredura suave para aumentar o campo visto pela camera.
+        angular = self.controle_angular_exploracao()
         fator_obstaculo = self.fator_velocidade_por_obstaculo()
         linear = self.velocidade_exploracao * fator_obstaculo
         self.publicar_velocidade(linear, angular)
@@ -453,8 +398,11 @@ class ControleRobo(Node):
             (
                 'explorando em curva suave; '
                 f'pose=({self.x:.2f}, {self.y:.2f}, yaw={self.yaw:.2f}), '
+                f'alvo=({self.x_alvo_exploracao:.1f}, '
+                f'{self.y_alvo_exploracao:.1f}), '
                 f'frente={self.formatar_distancia(self.distancia_frontal)}, '
-                f'fator_vel={fator_obstaculo:.2f}, cmd_linear={linear:.2f}'
+                f'fator_vel={fator_obstaculo:.2f}, '
+                f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
             ),
             periodo=1.5,
         )
@@ -635,6 +583,7 @@ class ControleRobo(Node):
 
     def estado_capturando_bandeira(self):
         self.publicar_velocidade(0.0, 0.0)
+        self.fechar_garra()
         self.log_estado_periodico(
             (
                 'missao concluida: robo parado de frente para a bandeira '
@@ -653,8 +602,7 @@ class ControleRobo(Node):
         if self.ultimo_instante_bandeira is None:
             return math.inf
 
-        agora = self.get_clock().now()
-        return (agora - self.ultimo_instante_bandeira).nanoseconds / 1e9
+        return time.monotonic() - self.ultimo_instante_bandeira
 
     def bandeira_pronta_para_posicionamento(self):
         det = self.deteccao_bandeira
@@ -664,6 +612,7 @@ class ControleRobo(Node):
         )
         proxima_por_lidar = (
             self.distancia_frontal <= self.distancia_posicionamento
+            and det.area_relativa >= self.area_posicionamento_bandeira * 0.4
         )
         return centralizada and (proxima_por_imagem or proxima_por_lidar)
 
@@ -671,8 +620,31 @@ class ControleRobo(Node):
         det = self.deteccao_bandeira
         centralizada = abs(det.erro_x) <= self.erro_alinhamento_bandeira
         proxima_por_imagem = det.area_relativa >= self.area_coleta_bandeira
-        proxima_por_lidar = self.distancia_frontal <= self.distancia_coleta
+        proxima_por_lidar = (
+            self.distancia_frontal <= self.distancia_coleta
+            and det.area_relativa >= self.area_posicionamento_bandeira
+        )
         return centralizada and (proxima_por_imagem or proxima_por_lidar)
+
+    def controle_angular_exploracao(self):
+        direcao_alvo = math.atan2(
+            self.y_alvo_exploracao - self.y,
+            self.x_alvo_exploracao - self.x,
+        )
+        erro_orientacao = self.normalizar_angulo(direcao_alvo - self.yaw)
+        varredura_camera = (
+            self.amplitude_varredura_camera
+            * math.sin(time.monotonic() * 0.65)
+        )
+        angular = (
+            self.ganho_orientacao_exploracao * erro_orientacao
+            + varredura_camera
+        )
+        return self.limitar(
+            angular,
+            -self.velocidade_giro_busca,
+            self.velocidade_giro_busca,
+        )
 
     def controle_angular_para_bandeira(self):
         # Erro positivo significa que a bandeira esta para a direita da imagem;
@@ -706,6 +678,31 @@ class ControleRobo(Node):
             fator = min(1.0, fator)
 
         return fator
+
+    def abrir_garra(self):
+        if not self.habilitar_garra or self.garra_aberta or self.garra_fechada:
+            return
+
+        self.publicar_garra(self.comando_garra_aberta)
+        self.garra_aberta = True
+        self.get_logger().info(
+            f'Garra: aberta para captura futura {self.comando_garra_aberta}.'
+        )
+
+    def fechar_garra(self):
+        if not self.habilitar_garra or self.garra_fechada:
+            return
+
+        self.publicar_garra(self.comando_garra_captura)
+        self.garra_fechada = True
+        self.get_logger().info(
+            f'Garra: comando de captura enviado {self.comando_garra_captura}.'
+        )
+
+    def publicar_garra(self, posicoes):
+        comando = Float64MultiArray()
+        comando.data = [float(posicao) for posicao in posicoes]
+        self.garra_pub.publish(comando)
 
     def trocar_estado(self, novo_estado: EstadoMissao, motivo: str):
         if novo_estado == self.estado_atual:
@@ -755,6 +752,10 @@ class ControleRobo(Node):
     @staticmethod
     def limitar(valor: float, minimo: float, maximo: float):
         return max(minimo, min(maximo, valor))
+
+    @staticmethod
+    def normalizar_angulo(angulo: float):
+        return math.atan2(math.sin(angulo), math.cos(angulo))
 
     @staticmethod
     def formatar_distancia(distancia: float):

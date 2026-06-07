@@ -15,6 +15,8 @@ launch:
   topico_imu: /imu
   topico_odom: /odom_gt
   topico_camera: /robot_cam/labels_map
+  topico_deteccao_bandeira: /bandeira_azul/deteccao
+  topico_garra: /gripper_controller/commands
 
 controle_robo:
   ros__parameters:
@@ -27,7 +29,14 @@ controle_robo:
     velocidade_posicionamento: 0.04
     distancia_velocidade_livre: 1.8
     fator_velocidade_livre: 1.70
-    fator_velocidade_proxima: 1.00
+    fator_velocidade_proxima: 0.55
+
+    # A bandeira azul fica no lado positivo de X na arena padrao.
+    # O controlador usa isto apenas como heuristica de busca inicial.
+    x_alvo_exploracao: 8.0
+    y_alvo_exploracao: 0.0
+    ganho_orientacao_exploracao: 0.45
+    amplitude_varredura_camera: 0.18
 
     velocidade_giro_busca: 0.45
     ganho_angular_bandeira: 0.9
@@ -42,6 +51,14 @@ controle_robo:
     tempo_perda_bandeira: 1.0
     tempo_reexploracao: 3.0
     tempo_minimo_desvio: 0.8
+
+    habilitar_garra: true
+    garra_extensao_aberta: 0.0
+    garra_direita_aberta: -0.06
+    garra_esquerda_aberta: 0.06
+    garra_extensao_captura: 0.0
+    garra_direita_captura: 0.0
+    garra_esquerda_captura: 0.0
 
     label_bandeira_azul: 25
     tolerancia_cor_bandeira: 0.0

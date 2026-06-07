@@ -27,6 +27,10 @@ CONFIGURACOES_MISSAO = [
     'distancia_velocidade_livre',
     'fator_velocidade_livre',
     'fator_velocidade_proxima',
+    'x_alvo_exploracao',
+    'y_alvo_exploracao',
+    'ganho_orientacao_exploracao',
+    'amplitude_varredura_camera',
     'velocidade_giro_busca',
     'ganho_angular_bandeira',
     'erro_alinhamento_bandeira',
@@ -38,6 +42,13 @@ CONFIGURACOES_MISSAO = [
     'tempo_perda_bandeira',
     'tempo_reexploracao',
     'tempo_minimo_desvio',
+    'habilitar_garra',
+    'garra_extensao_aberta',
+    'garra_direita_aberta',
+    'garra_esquerda_aberta',
+    'garra_extensao_captura',
+    'garra_direita_captura',
+    'garra_esquerda_captura',
     'label_bandeira_azul',
     'tolerancia_cor_bandeira',
     'topico_cmd_vel',
@@ -45,6 +56,8 @@ CONFIGURACOES_MISSAO = [
     'topico_imu',
     'topico_odom',
     'topico_camera',
+    'topico_deteccao_bandeira',
+    'topico_garra',
 ]
 
 
@@ -134,6 +147,26 @@ def generate_launch_description():
         default_value='0.45',
         description='Multiplicador de velocidade quando ha algo perto',
     )
+    x_alvo_exploracao_arg = DeclareLaunchArgument(
+        'x_alvo_exploracao',
+        default_value='8.0',
+        description='Coordenada x aproximada do lado azul para busca inicial',
+    )
+    y_alvo_exploracao_arg = DeclareLaunchArgument(
+        'y_alvo_exploracao',
+        default_value='0.0',
+        description='Coordenada y aproximada usada para guiar a busca inicial',
+    )
+    ganho_orientacao_exploracao_arg = DeclareLaunchArgument(
+        'ganho_orientacao_exploracao',
+        default_value='0.45',
+        description='Ganho para apontar a exploracao ao lado azul da arena',
+    )
+    amplitude_varredura_camera_arg = DeclareLaunchArgument(
+        'amplitude_varredura_camera',
+        default_value='0.18',
+        description='Amplitude angular da varredura de camera na exploracao',
+    )
     velocidade_giro_busca_arg = DeclareLaunchArgument(
         'velocidade_giro_busca',
         default_value='0.25',
@@ -189,6 +222,41 @@ def generate_launch_description():
         default_value='0.8',
         description='Tempo minimo girando durante um desvio de obstaculo',
     )
+    habilitar_garra_arg = DeclareLaunchArgument(
+        'habilitar_garra',
+        default_value='true',
+        description='Envia comandos simples para abrir e fechar a garra',
+    )
+    garra_extensao_aberta_arg = DeclareLaunchArgument(
+        'garra_extensao_aberta',
+        default_value='0.0',
+        description='Posicao da junta de extensao quando a garra abre',
+    )
+    garra_direita_aberta_arg = DeclareLaunchArgument(
+        'garra_direita_aberta',
+        default_value='-0.06',
+        description='Posicao da garra direita aberta',
+    )
+    garra_esquerda_aberta_arg = DeclareLaunchArgument(
+        'garra_esquerda_aberta',
+        default_value='0.06',
+        description='Posicao da garra esquerda aberta',
+    )
+    garra_extensao_captura_arg = DeclareLaunchArgument(
+        'garra_extensao_captura',
+        default_value='0.0',
+        description='Posicao da junta de extensao na captura',
+    )
+    garra_direita_captura_arg = DeclareLaunchArgument(
+        'garra_direita_captura',
+        default_value='0.0',
+        description='Posicao da garra direita fechada',
+    )
+    garra_esquerda_captura_arg = DeclareLaunchArgument(
+        'garra_esquerda_captura',
+        default_value='0.0',
+        description='Posicao da garra esquerda fechada',
+    )
     label_bandeira_azul_arg = DeclareLaunchArgument(
         'label_bandeira_azul',
         default_value='25',
@@ -198,6 +266,41 @@ def generate_launch_description():
         'tolerancia_cor_bandeira',
         default_value='0.0',
         description='Tolerancia BGR usada somente no fallback colored_map',
+    )
+    topico_cmd_vel_arg = DeclareLaunchArgument(
+        'topico_cmd_vel',
+        default_value='/diff_drive_base_controller/cmd_vel',
+        description='Topico de comando de velocidade do controlador das rodas',
+    )
+    topico_scan_arg = DeclareLaunchArgument(
+        'topico_scan',
+        default_value='/scan',
+        description='Topico do laser scan',
+    )
+    topico_imu_arg = DeclareLaunchArgument(
+        'topico_imu',
+        default_value='/imu',
+        description='Topico da IMU',
+    )
+    topico_odom_arg = DeclareLaunchArgument(
+        'topico_odom',
+        default_value='/odom_gt',
+        description='Topico de odometria ground truth',
+    )
+    topico_camera_arg = DeclareLaunchArgument(
+        'topico_camera',
+        default_value='/robot_cam/labels_map',
+        description='Topico da camera com labels semanticas numericas',
+    )
+    topico_deteccao_bandeira_arg = DeclareLaunchArgument(
+        'topico_deteccao_bandeira',
+        default_value='/bandeira_azul/deteccao',
+        description='Topico publicado pelo detector visual da bandeira azul',
+    )
+    topico_garra_arg = DeclareLaunchArgument(
+        'topico_garra',
+        default_value='/gripper_controller/commands',
+        description='Topico de comandos do JointGroupPositionController da garra',
     )
 
     inicia_simulacao = IncludeLaunchDescription(
@@ -253,6 +356,14 @@ def generate_launch_description():
             'fator_velocidade_proxima': LaunchConfiguration(
                 'fator_velocidade_proxima'
             ),
+            'x_alvo_exploracao': LaunchConfiguration('x_alvo_exploracao'),
+            'y_alvo_exploracao': LaunchConfiguration('y_alvo_exploracao'),
+            'ganho_orientacao_exploracao': LaunchConfiguration(
+                'ganho_orientacao_exploracao'
+            ),
+            'amplitude_varredura_camera': LaunchConfiguration(
+                'amplitude_varredura_camera'
+            ),
             'velocidade_giro_busca': LaunchConfiguration('velocidade_giro_busca'),
             'ganho_angular_bandeira': LaunchConfiguration(
                 'ganho_angular_bandeira'
@@ -272,10 +383,34 @@ def generate_launch_description():
             'tempo_perda_bandeira': LaunchConfiguration('tempo_perda_bandeira'),
             'tempo_reexploracao': LaunchConfiguration('tempo_reexploracao'),
             'tempo_minimo_desvio': LaunchConfiguration('tempo_minimo_desvio'),
+            'habilitar_garra': LaunchConfiguration('habilitar_garra'),
+            'garra_extensao_aberta': LaunchConfiguration('garra_extensao_aberta'),
+            'garra_direita_aberta': LaunchConfiguration('garra_direita_aberta'),
+            'garra_esquerda_aberta': LaunchConfiguration(
+                'garra_esquerda_aberta'
+            ),
+            'garra_extensao_captura': LaunchConfiguration(
+                'garra_extensao_captura'
+            ),
+            'garra_direita_captura': LaunchConfiguration(
+                'garra_direita_captura'
+            ),
+            'garra_esquerda_captura': LaunchConfiguration(
+                'garra_esquerda_captura'
+            ),
             'label_bandeira_azul': LaunchConfiguration('label_bandeira_azul'),
             'tolerancia_cor_bandeira': LaunchConfiguration(
                 'tolerancia_cor_bandeira'
             ),
+            'topico_cmd_vel': LaunchConfiguration('topico_cmd_vel'),
+            'topico_scan': LaunchConfiguration('topico_scan'),
+            'topico_imu': LaunchConfiguration('topico_imu'),
+            'topico_odom': LaunchConfiguration('topico_odom'),
+            'topico_camera': LaunchConfiguration('topico_camera'),
+            'topico_deteccao_bandeira': LaunchConfiguration(
+                'topico_deteccao_bandeira'
+            ),
+            'topico_garra': LaunchConfiguration('topico_garra'),
         }.items(),
     )
 
@@ -295,6 +430,10 @@ def generate_launch_description():
         distancia_velocidade_livre_arg,
         fator_velocidade_livre_arg,
         fator_velocidade_proxima_arg,
+        x_alvo_exploracao_arg,
+        y_alvo_exploracao_arg,
+        ganho_orientacao_exploracao_arg,
+        amplitude_varredura_camera_arg,
         velocidade_giro_busca_arg,
         ganho_angular_bandeira_arg,
         erro_alinhamento_bandeira_arg,
@@ -306,8 +445,22 @@ def generate_launch_description():
         tempo_perda_bandeira_arg,
         tempo_reexploracao_arg,
         tempo_minimo_desvio_arg,
+        habilitar_garra_arg,
+        garra_extensao_aberta_arg,
+        garra_direita_aberta_arg,
+        garra_esquerda_aberta_arg,
+        garra_extensao_captura_arg,
+        garra_direita_captura_arg,
+        garra_esquerda_captura_arg,
         label_bandeira_azul_arg,
         tolerancia_cor_bandeira_arg,
+        topico_cmd_vel_arg,
+        topico_scan_arg,
+        topico_imu_arg,
+        topico_odom_arg,
+        topico_camera_arg,
+        topico_deteccao_bandeira_arg,
+        topico_garra_arg,
         inicia_simulacao,
         # O Gazebo precisa de um instante para criar o mundo antes do spawn.
         TimerAction(

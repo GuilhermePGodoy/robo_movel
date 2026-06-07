@@ -31,6 +31,7 @@ setup(
     entry_points={
         'console_scripts': [
             'controle_robo = controle_robo.controle_robo:main',
+            'detector_bandeira = controle_robo.detector_bandeira:main',
         ],
     },
 )
