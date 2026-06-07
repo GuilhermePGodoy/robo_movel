@@ -59,7 +59,6 @@ setup(
     entry_points={
         'console_scripts': [
             'ground_truth_odometry = robo_movel.ground_truth_odometry:main',
-            'controle_robo = robo_movel.controle_robo:main',
             'robo_mapper = robo_movel.robo_mapper:main'
         ],
     },

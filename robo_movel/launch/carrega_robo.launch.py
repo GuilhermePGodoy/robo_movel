@@ -187,7 +187,7 @@ def generate_launch_description():
 
 #  Nodo que controla o movimento do robô
     controle = Node(
-        package="robo_movel",
+        package="controle_robo",
         executable="controle_robo",
         name="controle_do_robo",
         output="screen",
