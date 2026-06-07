@@ -72,8 +72,14 @@ abre o RViz e inicia os nos de percepcao/controle da missao.
 
 ## Maquina de Estados
 
-A maquina de estados fica em
-`src/controle_robo/controle_robo/controle_robo.py`.
+A logica da missao foi separada em alguns arquivos pequenos:
+
+- `src/controle_robo/controle_robo/controle_robo.py`: no ROS, parametros,
+  publishers, subscribers e cache das leituras dos sensores.
+- `src/controle_robo/controle_robo/maquina_estados.py`: transicoes de estado
+  e comandos de movimento/garra.
+- `src/controle_robo/controle_robo/modelos_missao.py`: enum dos estados e
+  estrutura da deteccao visual.
 
 - `EXPLORANDO`: avanca em curva suave para varrer a camera sem assumir a
   posicao da bandeira. Se o LIDAR detecta obstaculo, entra em desvio.

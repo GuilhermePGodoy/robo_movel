@@ -20,7 +20,9 @@ O projeto foi dividido em dois pacotes:
   - Mapper simples com `OccupancyGrid`.
 - `controle_robo`
   - Detector da bandeira azul.
-  - Maquina de estados da missao.
+  - No ROS de controle, com parametros e leituras recentes dos sensores.
+  - Maquina de estados da missao em arquivo separado.
+  - Modelos simples para estado e deteccao visual.
   - Launch principal da missao.
   - YAML de configuracao.
 
@@ -66,6 +68,10 @@ percepcao espacial e deixa caminho aberto para A* ou Dijkstra em trabalhos
 futuros.
 
 ## Maquina de Estados
+
+Implementada em `controle_robo/controle_robo/maquina_estados.py`. O arquivo
+`controle_robo.py` fica mais enxuto e cuida apenas da parte ROS: parametros,
+subscribers, publishers e timer de controle.
 
 Estados implementados:
 
