@@ -19,6 +19,8 @@ class ControleRobo(Node):
     def __init__(self):
         super().__init__('controle_robo')
 
+        self.configurar_parametros()
+
         # Publisher para comando de velocidade
         self.cmd_vel_pub = self.create_publisher(
             TwistStamped,
@@ -41,11 +43,32 @@ class ControleRobo(Node):
         # Estado interno
         self.obstaculo_a_frente = False
 
+    def configurar_parametros(self):
+        # Parametros principais do comportamento atual. Eles podem ser
+        # ajustados pelo launch sem alterar o codigo do controlador.
+        self.declare_parameter('velocidade_linear', 0.1)
+        self.declare_parameter('velocidade_angular_desvio', -0.3)
+        self.declare_parameter('distancia_obstaculo', 0.5)
+        self.declare_parameter('angulo_frontal_graus', 30.0)
+
+        self.velocidade_linear = float(
+            self.get_parameter('velocidade_linear').value
+        )
+        self.velocidade_angular_desvio = float(
+            self.get_parameter('velocidade_angular_desvio').value
+        )
+        self.distancia_obstaculo = float(
+            self.get_parameter('distancia_obstaculo').value
+        )
+        self.angulo_frontal_graus = float(
+            self.get_parameter('angulo_frontal_graus').value
+        )
+        self.limite_frontal = math.radians(self.angulo_frontal_graus)
+
     def scan_callback(self, msg: LaserScan):
         if not msg.ranges:
             return
 
-        limite_frontal = math.radians(30.0)
         distancias = []
 
         for indice, distancia in enumerate(msg.ranges):
@@ -56,11 +79,11 @@ class ControleRobo(Node):
                 math.isfinite(distancia)
                 and msg.range_min <= distancia <= msg.range_max
             )
-            if abs(angulo) <= limite_frontal and leitura_valida:
+            if abs(angulo) <= self.limite_frontal and leitura_valida:
                 distancias.append(distancia)
 
         distancia_frontal = min(distancias, default=math.inf)
-        self.obstaculo_a_frente = distancia_frontal < 0.5
+        self.obstaculo_a_frente = distancia_frontal < self.distancia_obstaculo
 
         if self.obstaculo_a_frente:
             self.get_logger().info(
@@ -132,9 +155,10 @@ class ControleRobo(Node):
         cmd_vel.header.stamp = self.get_clock().now().to_msg()
 
         if not self.obstaculo_a_frente:
-            cmd_vel.twist.linear.x = 0.1  # Move para frente
+            cmd_vel.twist.linear.x = self.velocidade_linear  # Move para frente
         else:
-            cmd_vel.twist.angular.z = -0.3  # Gira em torno do proprio eixo
+            # Gira em torno do proprio eixo para procurar caminho livre.
+            cmd_vel.twist.angular.z = self.velocidade_angular_desvio
 
         self.cmd_vel_pub.publish(cmd_vel)
 

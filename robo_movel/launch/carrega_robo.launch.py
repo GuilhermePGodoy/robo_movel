@@ -185,18 +185,11 @@ def generate_launch_description():
         output="screen",
     )
 
-#  Nodo que controla o movimento do robô
-    controle = Node(
-        package="controle_robo",
-        executable="controle_robo",
-        name="controle_do_robo",
-        output="screen",
-    )
-
     # ------------------------------------------------------
     # Definição da descrição completa do lançamento
     # ------------------------------------------------------
-    # Inclui todos os nós definidos acima no lançamento.
+    # Inclui os nós de robô, sensores, mapa e visualização. O controle
+    # autonomo fica no pacote controle_robo.
     return LaunchDescription([
         bridge,
         robot_state_publisher_node,
@@ -223,5 +216,4 @@ def generate_launch_description():
         robo_mapper,
         rviz_node,
   #      relay_odom, # Nodo de redirecionamento de mensagens (Estamos usando apenas odom_gt agora)
-        controle
     ])
