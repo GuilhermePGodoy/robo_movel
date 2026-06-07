@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
+import math
+
 import rclpy
 from rclpy.node import Node
 
-from sensor_msgs.msg import LaserScan, Imu, Image
-from nav_msgs.msg import Odometry, OccupancyGrid
-from geometry_msgs.msg import Twist, Pose
-
-from std_msgs.msg import Header
+from sensor_msgs.msg import LaserScan
+from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import Pose
 
 from scipy.spatial.transform import Rotation as R
 
-from cv_bridge import CvBridge
-import cv2
 import numpy as np
 
 # Necessario para publicar o frame map:
-from tf2_ros import TransformBroadcaster, StaticTransformBroadcaster
+from tf2_ros import StaticTransformBroadcaster
 from geometry_msgs.msg import TransformStamped
 
 
@@ -27,10 +25,6 @@ class RoboMapper(Node):
         # Subscribers
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.create_subscription(Pose, '/model/prm_robot/pose', self.odom_callback, 10)
-        self.create_subscription(Image, '/robot_cam/colored_map', self.camera_callback, 10)
-
-        # Utilizado para converter imagens ROS -> OpenCV
-        self.bridge = CvBridge()
 
         # Timer para enviar comandos continuamente
         self.timer = self.create_timer(0.5, self.atualiza_mapa)
@@ -39,10 +33,12 @@ class RoboMapper(Node):
         self.x = 0
         self.y = 0
         self.heading = 0
+        self.ultimo_scan = None
 
         # Atributos de configuração do mapa
-        # Parâmetros do mapa
-        self.grid_size = 50  # 50x50 células
+        # Parametros do mapa. Com 100 celulas a 25 cm, cobrimos 25 x 25 m,
+        # suficiente para a arena completa e para o spawn em x=-8.
+        self.grid_size = 100
         self.resolution = 0.25  # 25 cm por célula
 
         # Matriz do mapa (-1 = desconhecido)
@@ -65,10 +61,13 @@ class RoboMapper(Node):
         static_tf.transform.translation.z = 0.0
         static_tf.transform.rotation.w = 1.0  # identidade (Quaternions!!)
         self.tf_static_broadcaster.sendTransform(static_tf)
+        self.get_logger().info(
+            'Mapper iniciado: publicando /grid_map com pose e LIDAR.'
+        )
 
 
     def scan_callback(self, msg: LaserScan):
-        pass
+        self.ultimo_scan = msg
 
     def odom_callback(self, msg: Pose):
         # Extrair posição
@@ -86,12 +85,6 @@ class RoboMapper(Node):
         # Armazenar heading (Z - yaw)
         self.heading = euler[2]
 
-
-    def camera_callback(self, msg: Image):
-        # Converte mensagem ROS para imagem OpenCV (BGR)
-        # frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        pass
-
     def world_to_grid(self, x, y):
         origin_offset = self.grid_size * self.resolution / 2
         gx = int((x + origin_offset) / self.resolution)
@@ -99,16 +92,96 @@ class RoboMapper(Node):
         return gx, gy
 
     def atualiza_mapa(self):
-        # Marcar a posição atual do robô no mapa
+        if self.ultimo_scan is not None:
+            self.integrar_lidar(self.ultimo_scan)
+        else:
+            self.get_logger().warn(
+                'Mapper ainda nao recebeu /scan; publicando apenas pose do robo.',
+                throttle_duration_sec=3.0,
+            )
+
+        # Marcar a posicao atual do robo no mapa por ultimo para ela ficar
+        # visivel mesmo quando um raio do LIDAR passa pela mesma celula.
         gx, gy = self.world_to_grid(self.x, self.y)
         if 0 <= gx < self.grid_size and 0 <= gy < self.grid_size:
-            self.grid_map[gy, gx] = 100  # 100 = célula ocupada (por exemplo, robô)
+            self.grid_map[gy, gx] = 100
 
         # Publicar o mapa
         self.publish_occupancy_grid()
 
-        # Imprimir estado (Opcional)
-        #print(f"Posição atual do robô: x = {self.x:.2f}, y = {self.y:.2f}, heading = {self.heading:.2f} rad")
+    def integrar_lidar(self, scan: LaserScan):
+        origem = self.world_to_grid(self.x, self.y)
+        if not self.celula_valida(*origem):
+            return
+
+        # Usa no maximo 180 raios por atualizacao para manter o mapa leve.
+        passo = max(1, len(scan.ranges) // 180)
+
+        for indice in range(0, len(scan.ranges), passo):
+            distancia = scan.ranges[indice]
+            leitura_valida = (
+                math.isfinite(distancia)
+                and scan.range_min <= distancia <= scan.range_max
+            )
+
+            if leitura_valida:
+                alcance = distancia
+                marca_obstaculo = distancia < scan.range_max * 0.98
+            else:
+                alcance = scan.range_max
+                marca_obstaculo = False
+
+            angulo_laser = scan.angle_min + indice * scan.angle_increment
+            angulo_mundo = self.heading + angulo_laser
+            fim_x = self.x + alcance * math.cos(angulo_mundo)
+            fim_y = self.y + alcance * math.sin(angulo_mundo)
+            destino = self.world_to_grid(fim_x, fim_y)
+
+            self.marcar_raio_livre(origem, destino, marca_obstaculo)
+
+    def marcar_raio_livre(self, origem, destino, marca_obstaculo):
+        celulas = self.bresenham(origem[0], origem[1], destino[0], destino[1])
+        if not celulas:
+            return
+
+        for gx, gy in celulas[:-1]:
+            if self.celula_valida(gx, gy):
+                self.grid_map[gy, gx] = 0
+
+        fim_x, fim_y = celulas[-1]
+        if marca_obstaculo and self.celula_valida(fim_x, fim_y):
+            self.grid_map[fim_y, fim_x] = 100
+
+    def bresenham(self, x0, y0, x1, y1):
+        celulas = []
+        dx = abs(x1 - x0)
+        dy = -abs(y1 - y0)
+        sx = 1 if x0 < x1 else -1
+        sy = 1 if y0 < y1 else -1
+        erro = dx + dy
+
+        x_atual = x0
+        y_atual = y0
+        while True:
+            celulas.append((x_atual, y_atual))
+            if x_atual == x1 and y_atual == y1:
+                break
+
+            erro2 = 2 * erro
+            if erro2 >= dy:
+                erro += dy
+                x_atual += sx
+            if erro2 <= dx:
+                erro += dx
+                y_atual += sy
+
+            if len(celulas) > self.grid_size * 2:
+                break
+
+        return celulas
+
+    def celula_valida(self, gx, gy):
+        return 0 <= gx < self.grid_size and 0 <= gy < self.grid_size
 
     def publish_occupancy_grid(self):
         grid_msg = OccupancyGrid()
