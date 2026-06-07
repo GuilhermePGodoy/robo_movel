@@ -16,8 +16,6 @@ from controle_robo.launch_config import aplicar_config_file
 CONFIGURACOES_MISSAO = [
     'world',
     'use_sim_time',
-    'gz_update_rate',
-    'gz_verbosity',
     'atraso_carrega_robo',
     'atraso_controle',
     'velocidade_linear',
@@ -80,16 +78,6 @@ def generate_launch_description():
         'use_sim_time',
         default_value='true',
         description='Usa o relogio publicado pelo simulador Gazebo',
-    )
-    gz_update_rate_arg = DeclareLaunchArgument(
-        'gz_update_rate',
-        default_value='2000',
-        description='Taxa de atualizacao alvo do Gazebo em Hz',
-    )
-    gz_verbosity_arg = DeclareLaunchArgument(
-        'gz_verbosity',
-        default_value='3',
-        description='Nivel de verbosidade do Gazebo (0 a 4)',
     )
     atraso_carrega_robo_arg = DeclareLaunchArgument(
         'atraso_carrega_robo',
@@ -222,8 +210,6 @@ def generate_launch_description():
         ),
         launch_arguments={
             'world': LaunchConfiguration('world'),
-            'gz_update_rate': LaunchConfiguration('gz_update_rate'),
-            'gz_verbosity': LaunchConfiguration('gz_verbosity'),
         }.items(),
     )
 
@@ -298,8 +284,6 @@ def generate_launch_description():
         aplica_config_file,
         world_arg,
         use_sim_time_arg,
-        gz_update_rate_arg,
-        gz_verbosity_arg,
         atraso_carrega_robo_arg,
         atraso_controle_arg,
         velocidade_linear_arg,

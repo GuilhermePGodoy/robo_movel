@@ -6,11 +6,6 @@ launch:
   world: arena_cilindros.sdf
   use_sim_time: true
 
-  # Com max_step_size padrao de 1 ms, 2000 Hz mira cerca de 2x de tempo simulado.
-  # A simulacao so acelera de fato ate onde CPU/GPU conseguirem acompanhar.
-  gz_update_rate: 4000
-  gz_verbosity: 3
-
   # Pequenos atrasos para dar tempo do Gazebo, spawn e controladores subirem.
   atraso_carrega_robo: 1.0
   atraso_controle: 8.0
