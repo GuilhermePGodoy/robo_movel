@@ -1,9 +1,44 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
+
+from controle_robo.launch_config import aplicar_config_file
+
+
+CONFIGURACOES_CONTROLE = [
+    'use_sim_time',
+    'velocidade_linear',
+    'velocidade_angular_desvio',
+    'distancia_obstaculo',
+    'angulo_frontal_graus',
+    'velocidade_exploracao',
+    'velocidade_posicionamento',
+    'distancia_velocidade_livre',
+    'fator_velocidade_livre',
+    'fator_velocidade_proxima',
+    'velocidade_giro_busca',
+    'ganho_angular_bandeira',
+    'erro_alinhamento_bandeira',
+    'area_minima_bandeira',
+    'area_posicionamento_bandeira',
+    'area_coleta_bandeira',
+    'distancia_posicionamento',
+    'distancia_coleta',
+    'tempo_perda_bandeira',
+    'tempo_reexploracao',
+    'tempo_minimo_desvio',
+    'label_bandeira_azul',
+    'tolerancia_cor_bandeira',
+    'topico_cmd_vel',
+    'topico_scan',
+    'topico_imu',
+    'topico_odom',
+    'topico_camera',
+]
 
 
 def generate_launch_description():
@@ -12,6 +47,21 @@ def generate_launch_description():
     # ------------------------------------------------------
     # Mantem os topicos atuais como padrao, mas permite trocar nomes
     # pelo terminal sem modificar o codigo Python do no.
+    config_file_arg = DeclareLaunchArgument(
+        'config_file',
+        default_value=PathJoinSubstitution([
+            FindPackageShare('controle_robo'),
+            'config',
+            'missao_bandeira_azul.yaml',
+        ]),
+        description='Arquivo YAML com parametros da missao',
+    )
+
+    aplica_config_file = OpaqueFunction(
+        function=aplicar_config_file,
+        args=[CONFIGURACOES_CONTROLE],
+    )
+
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
         default_value='true',
@@ -20,7 +70,7 @@ def generate_launch_description():
     velocidade_linear_arg = DeclareLaunchArgument(
         'velocidade_linear',
         default_value='0.1',
-        description='Velocidade linear maxima ao seguir a bandeira',
+        description='Velocidade linear base ao seguir a bandeira',
     )
     velocidade_angular_desvio_arg = DeclareLaunchArgument(
         'velocidade_angular_desvio',
@@ -46,6 +96,21 @@ def generate_launch_description():
         'velocidade_posicionamento',
         default_value='0.04',
         description='Velocidade linear usada no ajuste fino para coleta',
+    )
+    distancia_velocidade_livre_arg = DeclareLaunchArgument(
+        'distancia_velocidade_livre',
+        default_value='1.8',
+        description='Distancia frontal a partir da qual o caminho esta livre',
+    )
+    fator_velocidade_livre_arg = DeclareLaunchArgument(
+        'fator_velocidade_livre',
+        default_value='1.35',
+        description='Multiplicador de velocidade quando nao ha nada a frente',
+    )
+    fator_velocidade_proxima_arg = DeclareLaunchArgument(
+        'fator_velocidade_proxima',
+        default_value='0.45',
+        description='Multiplicador de velocidade quando ha algo perto',
     )
     velocidade_giro_busca_arg = DeclareLaunchArgument(
         'velocidade_giro_busca',
@@ -174,6 +239,18 @@ def generate_launch_description():
                     LaunchConfiguration('velocidade_posicionamento'),
                     value_type=float,
                 ),
+                'distancia_velocidade_livre': ParameterValue(
+                    LaunchConfiguration('distancia_velocidade_livre'),
+                    value_type=float,
+                ),
+                'fator_velocidade_livre': ParameterValue(
+                    LaunchConfiguration('fator_velocidade_livre'),
+                    value_type=float,
+                ),
+                'fator_velocidade_proxima': ParameterValue(
+                    LaunchConfiguration('fator_velocidade_proxima'),
+                    value_type=float,
+                ),
                 'velocidade_giro_busca': ParameterValue(
                     LaunchConfiguration('velocidade_giro_busca'),
                     value_type=float,
@@ -241,6 +318,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        config_file_arg,
+        aplica_config_file,
         use_sim_time_arg,
         velocidade_linear_arg,
         velocidade_angular_desvio_arg,
@@ -248,6 +327,9 @@ def generate_launch_description():
         angulo_frontal_graus_arg,
         velocidade_exploracao_arg,
         velocidade_posicionamento_arg,
+        distancia_velocidade_livre_arg,
+        fator_velocidade_livre_arg,
+        fator_velocidade_proxima_arg,
         velocidade_giro_busca_arg,
         ganho_angular_bandeira_arg,
         erro_alinhamento_bandeira_arg,

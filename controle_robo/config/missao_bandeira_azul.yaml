@@ -1,0 +1,52 @@
+# Configuracao padrao da missao da bandeira azul.
+# Use este arquivo com:
+# ros2 launch controle_robo missao_bandeira_azul.launch.py config_file:=<caminho>
+
+launch:
+  world: arena_cilindros.sdf
+  use_sim_time: true
+
+  # Com max_step_size padrao de 1 ms, 2000 Hz mira cerca de 2x de tempo simulado.
+  # A simulacao so acelera de fato ate onde CPU/GPU conseguirem acompanhar.
+  gz_update_rate: 4000
+  gz_verbosity: 3
+
+  # Pequenos atrasos para dar tempo do Gazebo, spawn e controladores subirem.
+  atraso_carrega_robo: 1.0
+  atraso_controle: 8.0
+
+  topico_cmd_vel: /diff_drive_base_controller/cmd_vel
+  topico_scan: /scan
+  topico_imu: /imu
+  topico_odom: /odom_gt
+  topico_camera: /robot_cam/labels_map
+
+controle_robo:
+  ros__parameters:
+    velocidade_linear: 0.1
+    velocidade_angular_desvio: -0.3
+    distancia_obstaculo: 0.5
+    angulo_frontal_graus: 30.0
+
+    velocidade_exploracao: 0.08
+    velocidade_posicionamento: 0.04
+    distancia_velocidade_livre: 1.8
+    fator_velocidade_livre: 1.70
+    fator_velocidade_proxima: 1.00
+
+    velocidade_giro_busca: 0.45
+    ganho_angular_bandeira: 0.9
+    erro_alinhamento_bandeira: 0.12
+
+    area_minima_bandeira: 25.0
+    area_posicionamento_bandeira: 0.02
+    area_coleta_bandeira: 0.07
+    distancia_posicionamento: 0.9
+    distancia_coleta: 0.45
+
+    tempo_perda_bandeira: 1.0
+    tempo_reexploracao: 3.0
+    tempo_minimo_desvio: 0.8
+
+    label_bandeira_azul: 25
+    tolerancia_cor_bandeira: 0.0
