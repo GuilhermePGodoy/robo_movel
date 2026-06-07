@@ -70,8 +70,8 @@ futuros.
 Estados implementados:
 
 - `EXPLORANDO`
-  - Avanca em direcao ao lado azul da arena.
-  - Faz varredura suave com a camera.
+  - Avanca em curva suave.
+  - Faz varredura com a camera sem assumir a posicao da bandeira.
 - `BANDEIRA_DETECTADA`
   - Confirma a deteccao e escolhe a proxima acao.
 - `NAVIGANDO_PARA_BANDEIRA`
@@ -93,7 +93,7 @@ A solucao principal e reativa.
 Nao foi necessario usar A* para a entrega minima porque o objetivo pode ser
 atingido com:
 
-- Busca orientada ao lado azul da arena.
+- Busca reativa por curva/varredura de camera.
 - Deteccao visual da label correta.
 - Controle proporcional pelo erro horizontal da imagem.
 - Desvio local de obstaculos por LIDAR.

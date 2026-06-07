@@ -111,9 +111,6 @@ class ControleRobo(Node):
         self.declare_parameter('distancia_velocidade_livre', 1.8)
         self.declare_parameter('fator_velocidade_livre', 1.35)
         self.declare_parameter('fator_velocidade_proxima', 0.45)
-        self.declare_parameter('x_alvo_exploracao', 8.0)
-        self.declare_parameter('y_alvo_exploracao', 0.0)
-        self.declare_parameter('ganho_orientacao_exploracao', 0.45)
         self.declare_parameter('amplitude_varredura_camera', 0.18)
         self.declare_parameter('velocidade_giro_busca', 0.25)
         self.declare_parameter('ganho_angular_bandeira', 0.9)
@@ -164,15 +161,6 @@ class ControleRobo(Node):
             float(self.get_parameter('fator_velocidade_proxima').value),
             0.05,
             1.0,
-        )
-        self.x_alvo_exploracao = float(
-            self.get_parameter('x_alvo_exploracao').value
-        )
-        self.y_alvo_exploracao = float(
-            self.get_parameter('y_alvo_exploracao').value
-        )
-        self.ganho_orientacao_exploracao = float(
-            self.get_parameter('ganho_orientacao_exploracao').value
         )
         self.amplitude_varredura_camera = abs(float(
             self.get_parameter('amplitude_varredura_camera').value
@@ -388,9 +376,14 @@ class ControleRobo(Node):
             )
             return
 
-        # Movimento de exploracao: avanca em direcao ao lado azul da arena,
-        # mas soma uma varredura suave para aumentar o campo visto pela camera.
-        angular = self.controle_angular_exploracao()
+        # Movimento de exploracao em curva suave. A ideia e varrer a camera
+        # sem assumir previamente onde a bandeira azul esta no mundo.
+        fase = math.sin(time.monotonic() * 0.55)
+        angular = self.limitar(
+            self.amplitude_varredura_camera * fase,
+            -self.velocidade_giro_busca,
+            self.velocidade_giro_busca,
+        )
         fator_obstaculo = self.fator_velocidade_por_obstaculo()
         linear = self.velocidade_exploracao * fator_obstaculo
         self.publicar_velocidade(linear, angular)
@@ -398,8 +391,6 @@ class ControleRobo(Node):
             (
                 'explorando em curva suave; '
                 f'pose=({self.x:.2f}, {self.y:.2f}, yaw={self.yaw:.2f}), '
-                f'alvo=({self.x_alvo_exploracao:.1f}, '
-                f'{self.y_alvo_exploracao:.1f}), '
                 f'frente={self.formatar_distancia(self.distancia_frontal)}, '
                 f'fator_vel={fator_obstaculo:.2f}, '
                 f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
@@ -626,26 +617,6 @@ class ControleRobo(Node):
         )
         return centralizada and (proxima_por_imagem or proxima_por_lidar)
 
-    def controle_angular_exploracao(self):
-        direcao_alvo = math.atan2(
-            self.y_alvo_exploracao - self.y,
-            self.x_alvo_exploracao - self.x,
-        )
-        erro_orientacao = self.normalizar_angulo(direcao_alvo - self.yaw)
-        varredura_camera = (
-            self.amplitude_varredura_camera
-            * math.sin(time.monotonic() * 0.65)
-        )
-        angular = (
-            self.ganho_orientacao_exploracao * erro_orientacao
-            + varredura_camera
-        )
-        return self.limitar(
-            angular,
-            -self.velocidade_giro_busca,
-            self.velocidade_giro_busca,
-        )
-
     def controle_angular_para_bandeira(self):
         # Erro positivo significa que a bandeira esta para a direita da imagem;
         # em ROS, angular.z negativo gira o robo para a direita.
@@ -752,10 +723,6 @@ class ControleRobo(Node):
     @staticmethod
     def limitar(valor: float, minimo: float, maximo: float):
         return max(minimo, min(maximo, valor))
-
-    @staticmethod
-    def normalizar_angulo(angulo: float):
-        return math.atan2(math.sin(angulo), math.cos(angulo))
 
     @staticmethod
     def formatar_distancia(distancia: float):

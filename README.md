@@ -65,7 +65,7 @@ abre o RViz e inicia os nos de percepcao/controle da missao.
     odometria ground truth para orientacao/logs.
 - Odometria ground truth: `/odom_gt`
   - Mensagem: `nav_msgs/msg/Odometry`
-  - Uso: logs, exploracao orientada e publicacao do mapa.
+  - Uso: logs de pose e publicacao do mapa.
 - Mapa: `/grid_map`
   - Mensagem: `nav_msgs/msg/OccupancyGrid`
   - Uso: visualizacao em RViz de celulas livres, ocupadas e desconhecidas.
@@ -75,8 +75,8 @@ abre o RViz e inicia os nos de percepcao/controle da missao.
 A maquina de estados fica em
 `src/controle_robo/controle_robo/controle_robo.py`.
 
-- `EXPLORANDO`: avanca em direcao ao lado azul da arena e faz uma varredura
-  suave com a camera. Se o LIDAR detecta obstaculo, entra em desvio.
+- `EXPLORANDO`: avanca em curva suave para varrer a camera sem assumir a
+  posicao da bandeira. Se o LIDAR detecta obstaculo, entra em desvio.
 - `BANDEIRA_DETECTADA`: confirma que a deteccao visual e recente e decide se
   ja pode iniciar ajuste fino ou se ainda precisa navegar ate a bandeira.
 - `NAVIGANDO_PARA_BANDEIRA`: usa o erro horizontal da deteccao para alinhar o

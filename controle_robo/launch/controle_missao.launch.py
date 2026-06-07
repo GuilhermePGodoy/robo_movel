@@ -20,9 +20,6 @@ CONFIGURACOES_CONTROLE = [
     'distancia_velocidade_livre',
     'fator_velocidade_livre',
     'fator_velocidade_proxima',
-    'x_alvo_exploracao',
-    'y_alvo_exploracao',
-    'ganho_orientacao_exploracao',
     'amplitude_varredura_camera',
     'velocidade_giro_busca',
     'ganho_angular_bandeira',
@@ -125,25 +122,10 @@ def generate_launch_description():
         default_value='0.45',
         description='Multiplicador de velocidade quando ha algo perto',
     )
-    x_alvo_exploracao_arg = DeclareLaunchArgument(
-        'x_alvo_exploracao',
-        default_value='8.0',
-        description='Coordenada x aproximada do lado azul para busca inicial',
-    )
-    y_alvo_exploracao_arg = DeclareLaunchArgument(
-        'y_alvo_exploracao',
-        default_value='0.0',
-        description='Coordenada y aproximada usada para guiar a busca inicial',
-    )
-    ganho_orientacao_exploracao_arg = DeclareLaunchArgument(
-        'ganho_orientacao_exploracao',
-        default_value='0.45',
-        description='Ganho para apontar a exploracao ao lado azul da arena',
-    )
     amplitude_varredura_camera_arg = DeclareLaunchArgument(
         'amplitude_varredura_camera',
         default_value='0.18',
-        description='Amplitude angular da varredura de camera na exploracao',
+        description='Amplitude angular da curva de varredura na exploracao',
     )
     velocidade_giro_busca_arg = DeclareLaunchArgument(
         'velocidade_giro_busca',
@@ -363,18 +345,6 @@ def generate_launch_description():
                     LaunchConfiguration('fator_velocidade_proxima'),
                     value_type=float,
                 ),
-                'x_alvo_exploracao': ParameterValue(
-                    LaunchConfiguration('x_alvo_exploracao'),
-                    value_type=float,
-                ),
-                'y_alvo_exploracao': ParameterValue(
-                    LaunchConfiguration('y_alvo_exploracao'),
-                    value_type=float,
-                ),
-                'ganho_orientacao_exploracao': ParameterValue(
-                    LaunchConfiguration('ganho_orientacao_exploracao'),
-                    value_type=float,
-                ),
                 'amplitude_varredura_camera': ParameterValue(
                     LaunchConfiguration('amplitude_varredura_camera'),
                     value_type=float,
@@ -482,9 +452,6 @@ def generate_launch_description():
         distancia_velocidade_livre_arg,
         fator_velocidade_livre_arg,
         fator_velocidade_proxima_arg,
-        x_alvo_exploracao_arg,
-        y_alvo_exploracao_arg,
-        ganho_orientacao_exploracao_arg,
         amplitude_varredura_camera_arg,
         velocidade_giro_busca_arg,
         ganho_angular_bandeira_arg,

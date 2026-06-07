@@ -7,8 +7,8 @@ launch:
   use_sim_time: true
 
   # Pequenos atrasos para dar tempo do Gazebo, spawn e controladores subirem.
-  atraso_carrega_robo: 1.0
-  atraso_controle: 8.0
+  atraso_carrega_robo: 3.0
+  atraso_controle: 12.0
 
   topico_cmd_vel: /diff_drive_base_controller/cmd_vel
   topico_scan: /scan
@@ -20,22 +20,18 @@ launch:
 
 controle_robo:
   ros__parameters:
-    velocidade_linear: 0.1
+    velocidade_linear: 0.3
     velocidade_angular_desvio: -0.3
-    distancia_obstaculo: 0.5
+    distancia_obstaculo: 1.0
     angulo_frontal_graus: 30.0
 
-    velocidade_exploracao: 0.08
+    velocidade_exploracao: 0.3
     velocidade_posicionamento: 0.04
     distancia_velocidade_livre: 1.8
     fator_velocidade_livre: 1.70
     fator_velocidade_proxima: 0.55
 
-    # A bandeira azul fica no lado positivo de X na arena padrao.
-    # O controlador usa isto apenas como heuristica de busca inicial.
-    x_alvo_exploracao: 8.0
-    y_alvo_exploracao: 0.0
-    ganho_orientacao_exploracao: 0.45
+    # Curva suave de exploracao para varrer a camera sem alvo conhecido.
     amplitude_varredura_camera: 0.18
 
     velocidade_giro_busca: 0.45
