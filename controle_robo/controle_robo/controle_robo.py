@@ -102,6 +102,9 @@ class ControleRobo(Node):
         self.declare_parameter('angulo_frontal_graus', 30.0)
         self.declare_parameter('velocidade_exploracao', 0.08)
         self.declare_parameter('velocidade_posicionamento', 0.04)
+        self.declare_parameter('distancia_velocidade_livre', 1.8)
+        self.declare_parameter('fator_velocidade_livre', 1.35)
+        self.declare_parameter('fator_velocidade_proxima', 0.45)
         self.declare_parameter('velocidade_giro_busca', 0.25)
         self.declare_parameter('ganho_angular_bandeira', 0.9)
         self.declare_parameter('erro_alinhamento_bandeira', 0.12)
@@ -134,6 +137,19 @@ class ControleRobo(Node):
         )
         self.velocidade_posicionamento = float(
             self.get_parameter('velocidade_posicionamento').value
+        )
+        self.distancia_velocidade_livre = max(
+            self.distancia_obstaculo + 0.05,
+            float(self.get_parameter('distancia_velocidade_livre').value),
+        )
+        self.fator_velocidade_livre = max(
+            1.0,
+            float(self.get_parameter('fator_velocidade_livre').value),
+        )
+        self.fator_velocidade_proxima = self.limitar(
+            float(self.get_parameter('fator_velocidade_proxima').value),
+            0.05,
+            1.0,
         )
         self.velocidade_giro_busca = abs(float(
             self.get_parameter('velocidade_giro_busca').value
@@ -430,12 +446,15 @@ class ControleRobo(Node):
         # Movimento de exploracao em curva suave para varrer a camera.
         fase = math.sin(time.monotonic() * 0.55)
         angular = self.limitar(0.15 * fase, -0.18, 0.18)
-        self.publicar_velocidade(self.velocidade_exploracao, angular)
+        fator_obstaculo = self.fator_velocidade_por_obstaculo()
+        linear = self.velocidade_exploracao * fator_obstaculo
+        self.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
                 'explorando em curva suave; '
                 f'pose=({self.x:.2f}, {self.y:.2f}, yaw={self.yaw:.2f}), '
-                f'frente={self.formatar_distancia(self.distancia_frontal)}'
+                f'frente={self.formatar_distancia(self.distancia_frontal)}, '
+                f'fator_vel={fator_obstaculo:.2f}, cmd_linear={linear:.2f}'
             ),
             periodo=1.5,
         )
@@ -496,13 +515,16 @@ class ControleRobo(Node):
         det = self.deteccao_bandeira
         angular = self.controle_angular_para_bandeira()
         fator_alinhamento = max(0.25, 1.0 - abs(det.erro_x))
-        linear = self.velocidade_linear * fator_alinhamento
+        fator_obstaculo = self.fator_velocidade_por_obstaculo()
+        linear = self.velocidade_linear * fator_alinhamento * fator_obstaculo
 
         self.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
                 'navegando para bandeira; '
                 f'erro={det.erro_x:+.2f}, area={det.area_relativa:.3f}, '
+                f'frente={self.formatar_distancia(self.distancia_frontal)}, '
+                f'fator_vel={fator_obstaculo:.2f}, '
                 f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
             ),
             periodo=1.0,
@@ -590,9 +612,13 @@ class ControleRobo(Node):
 
         if abs(det.erro_x) > self.erro_alinhamento_bandeira:
             linear = 0.0
+            fator_obstaculo = 1.0
             acao = 'ajustando orientacao'
         else:
-            linear = self.velocidade_posicionamento
+            fator_obstaculo = self.fator_velocidade_por_obstaculo(
+                permitir_aceleracao=False
+            )
+            linear = self.velocidade_posicionamento * fator_obstaculo
             acao = 'aproximando devagar'
 
         self.publicar_velocidade(linear, angular)
@@ -601,6 +627,7 @@ class ControleRobo(Node):
                 f'{acao}; erro={det.erro_x:+.2f}, '
                 f'area={det.area_relativa:.3f}, '
                 f'frente={self.formatar_distancia(self.distancia_frontal)}, '
+                f'fator_vel={fator_obstaculo:.2f}, '
                 f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
             ),
             periodo=0.7,
@@ -656,6 +683,29 @@ class ControleRobo(Node):
             -self.velocidade_giro_busca,
             self.velocidade_giro_busca,
         )
+
+    def fator_velocidade_por_obstaculo(self, permitir_aceleracao: bool = True):
+        # Acelera um pouco quando o LIDAR nao enxerga nada na frente e reduz
+        # progressivamente quando algo se aproxima do limiar de obstaculo.
+        if math.isinf(self.distancia_frontal):
+            fator = self.fator_velocidade_livre
+        elif self.distancia_frontal >= self.distancia_velocidade_livre:
+            fator = self.fator_velocidade_livre
+        elif self.distancia_frontal <= self.distancia_obstaculo:
+            fator = self.fator_velocidade_proxima
+        else:
+            faixa = self.distancia_velocidade_livre - self.distancia_obstaculo
+            progresso = (self.distancia_frontal - self.distancia_obstaculo) / faixa
+            fator = (
+                self.fator_velocidade_proxima
+                + progresso
+                * (self.fator_velocidade_livre - self.fator_velocidade_proxima)
+            )
+
+        if not permitir_aceleracao:
+            fator = min(1.0, fator)
+
+        return fator
 
     def trocar_estado(self, novo_estado: EstadoMissao, motivo: str):
         if novo_estado == self.estado_atual:
