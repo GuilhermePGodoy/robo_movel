@@ -53,6 +53,15 @@ class MaquinaEstadosMissao:
             )
             return
 
+        if self.deve_desviar_por_obstaculo_lateral():
+            self.apontar_desvio_para_lado_livre()
+            self.trocar_estado(
+                EstadoMissao.DESVIANDO_OBSTACULO,
+                self.motivo_obstaculo_lateral(),
+            )
+            self.robo.publicar_velocidade(0.0, 0.0)
+            return
+
         acao()
 
     def estado_explorando(self):
@@ -176,20 +185,29 @@ class MaquinaEstadosMissao:
     def estado_desviando_obstaculo(self):
         robo = self.robo
         tempo_no_estado = time.monotonic() - self.instante_inicio_estado
+        distancia_lateral = min(robo.distancia_esquerda, robo.distancia_direita)
+        laterais_livres = distancia_lateral >= robo.distancia_lateral_desvio
 
         if (
             not robo.obstaculo_a_frente
             and tempo_no_estado >= robo.tempo_minimo_desvio
+            and laterais_livres
         ):
             if self.bandeira_recente():
                 self.trocar_estado(
                     EstadoMissao.NAVIGANDO_PARA_BANDEIRA,
-                    'obstaculo liberado e bandeira continua visivel',
+                    (
+                        'obstaculo liberado, laterais seguras '
+                        f'({distancia_lateral:.2f} m) e bandeira visivel'
+                    ),
                 )
             else:
                 self.trocar_estado(
                     EstadoMissao.EXPLORANDO,
-                    'obstaculo liberado; retomando busca pela bandeira',
+                    (
+                        'obstaculo liberado e laterais seguras '
+                        f'({distancia_lateral:.2f} m); retomando busca'
+                    ),
                 )
             return
 
@@ -201,7 +219,9 @@ class MaquinaEstadosMissao:
                 f'desviando: girando para {sentido}; '
                 f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
                 f'esq={robo.formatar_distancia(robo.distancia_esquerda)}, '
-                f'dir={robo.formatar_distancia(robo.distancia_direita)}'
+                f'dir={robo.formatar_distancia(robo.distancia_direita)}, '
+                f'lateral_min={robo.formatar_distancia(distancia_lateral)}, '
+                f'lateral_minima={robo.distancia_lateral_desvio:.2f}m'
             ),
             periodo=0.8,
         )
@@ -319,6 +339,41 @@ class MaquinaEstadosMissao:
             return math.inf
 
         return time.monotonic() - self.robo.ultimo_instante_bandeira
+
+    def deve_desviar_por_obstaculo_lateral(self):
+        if self.estado_atual in (
+            EstadoMissao.DESVIANDO_OBSTACULO,
+            EstadoMissao.CAPTURANDO_BANDEIRA,
+        ):
+            return False
+
+        return (
+            self.menor_distancia_lateral()
+            < self.robo.distancia_lateral_desvio
+        )
+
+    def menor_distancia_lateral(self):
+        return min(self.robo.distancia_esquerda, self.robo.distancia_direita)
+
+    def apontar_desvio_para_lado_livre(self):
+        robo = self.robo
+        robo.direcao_desvio = (
+            1.0 if robo.distancia_esquerda >= robo.distancia_direita else -1.0
+        )
+
+    def motivo_obstaculo_lateral(self):
+        robo = self.robo
+        lado_apertado = (
+            'esquerdo'
+            if robo.distancia_esquerda < robo.distancia_direita
+            else 'direito'
+        )
+        lado_desvio = 'esquerda' if robo.direcao_desvio > 0.0 else 'direita'
+        return (
+            f'obstaculo lateral {lado_apertado} '
+            f'({self.menor_distancia_lateral():.2f} m); '
+            f'desviando para {lado_desvio}'
+        )
 
     def bandeira_pronta_para_posicionamento(self):
         robo = self.robo

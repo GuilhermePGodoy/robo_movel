@@ -49,7 +49,7 @@ abre o RViz e inicia os nos de percepcao/controle da missao.
 - LIDAR: `/scan`
   - Mensagem: `sensor_msgs/msg/LaserScan`
   - Uso: identifica obstaculos a frente, escolhe o lado mais livre para desvio
-    e alimenta o mapa de ocupacao.
+    monitora folga lateral e alimenta o mapa de ocupacao.
 - Camera semantica: `/robot_cam/labels_map`
   - Mensagem: `sensor_msgs/msg/Image`
   - Uso: cada pixel carrega uma label semantica do Gazebo. A bandeira azul usa
@@ -88,7 +88,8 @@ A logica da missao foi separada em alguns arquivos pequenos:
 - `NAVIGANDO_PARA_BANDEIRA`: usa o erro horizontal da deteccao para alinhar o
   robo com a bandeira e avanca proporcionalmente ao alinhamento.
 - `DESVIANDO_OBSTACULO`: gira para o lado com maior distancia livre medida
-  pelo LIDAR. Depois retoma navegacao para a bandeira ou volta a explorar.
+  pelo LIDAR. Depois retoma navegacao para a bandeira ou volta a explorar
+  quando a frente e as laterais estao livres.
 - `REDETECTANDO_BANDEIRA`: se a bandeira some da camera, gira no sentido da
   ultima deteccao por alguns segundos antes de voltar a explorar.
 - `POSICIONANDO_PARA_COLETA`: faz o ajuste fino de orientacao e distancia,
@@ -116,6 +117,8 @@ Alguns ajustes uteis:
   controladores iniciarem.
 - `label_bandeira_azul`: label semantica da bandeira azul, atualmente `25`.
 - `distancia_obstaculo`: distancia frontal minima antes de desviar.
+- `distancia_lateral_desvio`: distancia lateral minima para sair do desvio e
+  tambem para acionar o desvio caso algum objeto fique perto demais do lado.
 - `fator_velocidade_livre` e `fator_velocidade_proxima`: aceleracao em caminho
   livre e reducao de velocidade perto de obstaculos.
 - `area_posicionamento_bandeira` e `area_coleta_bandeira`: limiares visuais

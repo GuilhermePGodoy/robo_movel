@@ -78,6 +78,7 @@ class ControleRobo(Node):
         self.declare_parameter('velocidade_angular_desvio', -0.3)
         self.declare_parameter('distancia_obstaculo', 0.5)
         self.declare_parameter('angulo_frontal_graus', 30.0)
+        self.declare_parameter('distancia_lateral_desvio', 0.5)
         self.declare_parameter('velocidade_exploracao', 0.08)
         self.declare_parameter('velocidade_posicionamento', 0.04)
         self.declare_parameter('distancia_velocidade_livre', 1.8)
@@ -115,6 +116,9 @@ class ControleRobo(Node):
             self.get_parameter('angulo_frontal_graus').value
         )
         self.limite_frontal = math.radians(self.angulo_frontal_graus)
+        self.distancia_lateral_desvio = float(
+            self.get_parameter('distancia_lateral_desvio').value
+        )
         self.velocidade_exploracao = float(
             self.get_parameter('velocidade_exploracao').value
         )

@@ -53,7 +53,8 @@ O controle usa tres regioes:
 - Direita: mede espaco livre para desvio.
 
 Quando a frente fica bloqueada, o robo gira para o lado com maior distancia
-livre e depois retoma a missao.
+livre. A mesma leitura lateral tambem impede que o robo retome a missao
+enquanto ainda estiver muito perto de um obstaculo ao lado.
 
 ## Mapa
 
@@ -85,6 +86,7 @@ Estados implementados:
   - Avanca mais quando esta bem alinhado.
 - `DESVIANDO_OBSTACULO`
   - Usa LIDAR para girar para o lado mais livre.
+  - So termina quando ha folga frontal e lateral.
 - `REDETECTANDO_BANDEIRA`
   - Gira na direcao da ultima deteccao se a bandeira sumir.
 - `POSICIONANDO_PARA_COLETA`

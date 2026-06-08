@@ -22,29 +22,30 @@ launch:
 
 controle_robo:
   ros__parameters:
-    velocidade_linear: 0.3
+    velocidade_linear: 0.2
     velocidade_angular_desvio: -0.5
-    distancia_obstaculo: 0.5
+    distancia_obstaculo: 0.6
     angulo_frontal_graus: 30.0
+    distancia_lateral_desvio: 0.1
 
-    velocidade_exploracao: 0.3
+    velocidade_exploracao: 0.2
     velocidade_posicionamento: 0.04
     distancia_velocidade_livre: 1.8
     fator_velocidade_livre: 1.70
-    fator_velocidade_proxima: 0.55
+    fator_velocidade_proxima: 0.7
 
     # Curva suave de exploracao para varrer a camera sem alvo conhecido.
-    amplitude_varredura_camera: 0.15
+    amplitude_varredura_camera: 0.05
 
-    velocidade_giro_busca: 0.45
+    velocidade_giro_busca: 0.3
     ganho_angular_bandeira: 0.9
     erro_alinhamento_bandeira: 0.12
 
     area_minima_bandeira: 25.0
     area_posicionamento_bandeira: 0.02
     area_coleta_bandeira: 0.07
-    distancia_posicionamento: 0.5
-    distancia_coleta: 0.35
+    distancia_posicionamento: 0.2
+    distancia_coleta: 0.2
 
     tempo_perda_bandeira: 1.0
     tempo_reexploracao: 3.0

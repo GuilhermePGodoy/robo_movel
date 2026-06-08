@@ -15,6 +15,7 @@ CONFIGURACOES_CONTROLE = [
     'velocidade_angular_desvio',
     'distancia_obstaculo',
     'angulo_frontal_graus',
+    'distancia_lateral_desvio',
     'velocidade_exploracao',
     'velocidade_posicionamento',
     'distancia_velocidade_livre',
@@ -101,6 +102,11 @@ def generate_launch_description():
         'angulo_frontal_graus',
         default_value='30.0',
         description='Abertura angular frontal analisada no laser',
+    )
+    distancia_lateral_desvio_arg = DeclareLaunchArgument(
+        'distancia_lateral_desvio',
+        default_value='0.5',
+        description='Distancia lateral minima para terminar o desvio',
     )
     velocidade_exploracao_arg = DeclareLaunchArgument(
         'velocidade_exploracao',
@@ -375,6 +381,10 @@ def generate_launch_description():
                     LaunchConfiguration('angulo_frontal_graus'),
                     value_type=float,
                 ),
+                'distancia_lateral_desvio': ParameterValue(
+                    LaunchConfiguration('distancia_lateral_desvio'),
+                    value_type=float,
+                ),
                 'velocidade_exploracao': ParameterValue(
                     LaunchConfiguration('velocidade_exploracao'),
                     value_type=float,
@@ -497,6 +507,7 @@ def generate_launch_description():
         velocidade_angular_desvio_arg,
         distancia_obstaculo_arg,
         angulo_frontal_graus_arg,
+        distancia_lateral_desvio_arg,
         velocidade_exploracao_arg,
         velocidade_posicionamento_arg,
         distancia_velocidade_livre_arg,
