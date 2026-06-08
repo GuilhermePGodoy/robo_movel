@@ -6,7 +6,9 @@ diferencial que explora a arena, detecta a bandeira azul por camera de
 segmentacao semantica, desvia de obstaculos com LIDAR e se posiciona para
 captura-la com uma maquina de estados.
 
-Material de apresentacao: [docs/apresentacao_trabalho1.md](docs/apresentacao_trabalho1.md)
+Material de apresentacao:
+[slides em PowerPoint](docs/robo_movel_algoritmo_ensino_medio.pptx) e
+[roteiro em Markdown](docs/apresentacao_trabalho1.md).
 
 ## Como Rodar
 
