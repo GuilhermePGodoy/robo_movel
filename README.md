@@ -3,8 +3,9 @@
 Projeto desenvolvido para o Trabalho Avaliado 1 de Programacao de Robos
 Moveis. O sistema usa ROS 2 Jazzy e Gazebo Sim para simular um robo
 diferencial que explora a arena, detecta a bandeira azul por camera de
-segmentacao semantica, desvia de obstaculos com LIDAR e se posiciona para
-captura-la com uma maquina de estados.
+segmentacao semantica, estima a posicao da bandeira no mapa, planeja caminhos
+com A*, desvia de obstaculos com LIDAR, captura a bandeira e retorna para a
+base inicial.
 
 Material de apresentacao:
 [slides em PowerPoint](docs/robo_movel_algoritmo_ensino_medio.pptx) e
@@ -70,7 +71,14 @@ abre o RViz e inicia os nos de percepcao/controle da missao.
   - Uso: logs de pose e publicacao do mapa.
 - Mapa: `/grid_map`
   - Mensagem: `nav_msgs/msg/OccupancyGrid`
-  - Uso: visualizacao em RViz de celulas livres, ocupadas e desconhecidas.
+  - Uso: visualizacao em RViz e planejamento A* sobre celulas livres,
+    ocupadas e desconhecidas.
+- Caminho planejado: `/caminho_planejado`
+  - Mensagem: `nav_msgs/msg/Path`
+  - Uso: visualizacao do caminho A* atual no RViz.
+- Alvo estimado: `/bandeira_azul/alvo_estimado`
+  - Mensagem: `geometry_msgs/msg/PoseStamped`
+  - Uso: mostra a hipotese de posicao da bandeira estimada pela camera.
 
 ## Maquina de Estados
 
@@ -82,28 +90,36 @@ A logica da missao foi separada em alguns arquivos pequenos:
   e comandos de movimento/garra.
 - `src/controle_robo/controle_robo/modelos_missao.py`: enum dos estados e
   estrutura da deteccao visual.
+- `src/controle_robo/controle_robo/estimador_bandeira.py`: trigonometria da
+  camera para estimar distancia, angulo e confianca da bandeira.
+- `src/controle_robo/controle_robo/planejador_grade.py`: A* sobre o
+  `OccupancyGrid`, com custo maior para celulas desconhecidas.
 
 - `EXPLORANDO`: avanca em curva suave para varrer a camera sem assumir a
   posicao da bandeira. Se o LIDAR detecta obstaculo, entra em desvio.
 - `BANDEIRA_DETECTADA`: confirma que a deteccao visual e recente e decide se
-  ja pode iniciar ajuste fino ou se ainda precisa navegar ate a bandeira.
-- `NAVIGANDO_PARA_BANDEIRA`: usa o erro horizontal da deteccao para alinhar o
-  robo com a bandeira e avanca proporcionalmente ao alinhamento.
+  ja pode iniciar ajuste fino ou estimar a posicao no mapa.
+- `ESTIMANDO_POSICAO_BANDEIRA`: usa tamanho da bounding box, FOV da camera,
+  pose do robo e LIDAR para estimar `(x, y, confianca)` da bandeira.
+- `PLANEJANDO_PARA_BANDEIRA`: roda A* do ponto atual ate uma celula livre
+  perto da estimativa da bandeira.
+- `SEGUINDO_CAMINHO_PARA_BANDEIRA`: segue waypoints do A* e replaneja se o
+  mapa mostrar um bloqueio novo.
 - `DESVIANDO_OBSTACULO`: gira para o lado com maior distancia livre medida
-  pelo LIDAR. Depois retoma navegacao para a bandeira ou volta a explorar
-  quando a frente e as laterais estao livres.
+  pelo LIDAR. Depois replaneja, retoma busca visual ou volta a explorar.
 - `REDETECTANDO_BANDEIRA`: se a bandeira some da camera, gira no sentido da
   ultima deteccao por alguns segundos antes de voltar a explorar.
 - `POSICIONANDO_PARA_COLETA`: faz o ajuste fino de orientacao e distancia,
   aproximando devagar quando a bandeira esta centralizada.
 - `CAPTURANDO_BANDEIRA`: para o robo e envia comando simples para fechar a
   garra.
+- `PLANEJANDO_RETORNO_BASE` e `RETORNANDO_BASE`: usam A* para voltar ate a
+  pose inicial salva como base.
+- `ENTREGANDO_BANDEIRA` e `MISSAO_CONCLUIDA`: abrem a garra na base e deixam o
+  robo parado.
 
-O controle e reativo. Nao ha A* no caminho principal porque a arena e os
-requisitos permitem uma estrategia mais simples: buscar a bandeira por visao,
-desviar localmente com LIDAR e reposicionar caso a deteccao seja perdida. O
-mapa `/grid_map` fica disponivel para visualizacao e para uma evolucao futura
-com planejamento global.
+O controle agora e hibrido: a camera acha e refina a bandeira, o A* aproxima o
+robo pelo mapa e o LIDAR continua sendo a seguranca local contra colisao.
 
 ## Configuracao
 
@@ -125,6 +141,13 @@ Alguns ajustes uteis:
   livre e reducao de velocidade perto de obstaculos.
 - `area_posicionamento_bandeira` e `area_coleta_bandeira`: limiares visuais
   para aproximacao final.
+- `usar_planejamento_grade`: habilita/desabilita A* sobre `/grid_map`.
+- `confianca_minima_planejamento`: confianca minima da estimativa visual antes
+  de planejar caminho.
+- `custo_desconhecido` e `inflacao_obstaculo_celulas`: comportamento do A* em
+  regioes desconhecidas e margem de seguranca ao redor de obstaculos.
+- `tolerancia_waypoint` e `tolerancia_alvo_planejado`: quando considerar um
+  waypoint ou alvo planejado alcancado.
 - `habilitar_garra`: habilita/desabilita comandos para a garra.
 
 ## Debug
@@ -138,6 +161,8 @@ ros2 topic hz /robot_cam/labels_map
 ros2 run rqt_image_view rqt_image_view /bandeira_azul/debug_mask
 ros2 topic echo /scan --once
 ros2 topic echo /grid_map --once
+ros2 topic echo /bandeira_azul/alvo_estimado --once
+ros2 topic echo /caminho_planejado --once
 ros2 topic echo /diff_drive_base_controller/cmd_vel
 ros2 topic echo /gripper_controller/commands
 ```

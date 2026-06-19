@@ -8,13 +8,14 @@ launch:
 
   # Pequenos atrasos para dar tempo do Gazebo, spawn e controladores subirem.
   atraso_carrega_robo: 1.0
-  atraso_controle: 3.0
+  atraso_controle: 10.0
 
   topico_cmd_vel: /diff_drive_base_controller/cmd_vel
   topico_scan: /scan
   topico_imu: /imu
   topico_odom: /odom_gt
   topico_camera: /robot_cam/labels_map
+  topico_mapa: /grid_map
   topico_deteccao_bandeira: /bandeira_azul/deteccao
   topico_debug_info_bandeira: /bandeira_azul/debug_info
   topico_debug_mask_bandeira: /bandeira_azul/debug_mask
@@ -41,7 +42,7 @@ controle_robo:
     ganho_angular_bandeira: 0.9
     erro_alinhamento_bandeira: 0.12
 
-    area_minima_bandeira: 25.0
+    area_minima_bandeira: 5.0
     area_posicionamento_bandeira: 0.02
     area_coleta_bandeira: 0.07
     distancia_posicionamento: 0.2
@@ -49,7 +50,7 @@ controle_robo:
 
     tempo_perda_bandeira: 1.0
     tempo_reexploracao: 3.0
-    tempo_minimo_desvio: 1.5
+    tempo_minimo_desvio: 1.0
 
     habilitar_garra: true
     garra_extensao_aberta: 0.0
@@ -58,6 +59,27 @@ controle_robo:
     garra_extensao_captura: 0.0
     garra_direita_captura: 0.0
     garra_esquerda_captura: 0.0
+
+    # Planejamento hibrido: visao estima a bandeira, A* aproxima pelo mapa.
+    usar_planejamento_grade: true
+    fov_horizontal_camera: 1.57
+    largura_real_bandeira: 0.3
+    # A label 25 pega o conjunto visual da bandeira, nao so o painel azul.
+    # Por isso usamos a altura aproximada do blob completo na camera.
+    altura_real_bandeira: 0.48
+    distancia_minima_estimativa: 0.2
+    distancia_maxima_estimativa: 10.0
+    confianca_minima_planejamento: 0.35
+    historico_estimativas_bandeira: 5
+
+    custo_desconhecido: 3.0
+    inflacao_obstaculo_celulas: 1
+    tolerancia_waypoint: 0.25
+    tolerancia_alvo_planejado: 0.6
+    ganho_angular_waypoint: 1.0
+    velocidade_seguindo_caminho: 0.15
+    deslocamento_replanejamento_alvo: 1.5
+    intervalo_minimo_replanejamento_visual: 3.0
 
     label_bandeira_azul: 25
     tolerancia_cor_bandeira: 0.0

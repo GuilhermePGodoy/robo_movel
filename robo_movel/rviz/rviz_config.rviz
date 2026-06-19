@@ -251,7 +251,7 @@ Visualization Manager:
     - Alpha: 0.699999988079071
       Class: rviz_default_plugins/Map
       Color Scheme: map
-      Draw Behind: false
+      Draw Behind: true
       Enabled: true
       Name: Map
       Topic:
@@ -269,10 +269,56 @@ Visualization Manager:
         Value: /grid_map_updates
       Use Timestamp: false
       Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 255; 210; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.080000000000000002
+      Name: Caminho A*
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0.050000000000000003
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /caminho_planejado
+      Value: true
+    - Alpha: 1
+      Axes Length: 0.699999988079071
+      Axes Radius: 0.05000000074505806
+      Class: rviz_default_plugins/Pose
+      Color: 0; 85; 255
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Alvo bandeira
+      Shaft Length: 0.699999988079071
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /bandeira_azul/alvo_estimado
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: base_footprint
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:
@@ -297,7 +343,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 4.912381172180176
+      Distance: 18
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -312,7 +358,7 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9747974872589111
+      Pitch: 1.5707963267948966
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
       Yaw: 3.15041184425354

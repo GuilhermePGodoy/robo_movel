@@ -7,7 +7,8 @@ Implementar um robo movel autonomo em ROS 2 capaz de:
 - Explorar a arena simulada no Gazebo.
 - Detectar a bandeira azul por visao computacional semantica.
 - Desviar de obstaculos usando LIDAR.
-- Aproximar, alinhar e parar diante da bandeira para captura.
+- Estimar a posicao da bandeira no mapa, planejar caminho com A*, captura-la
+  e retornar para a base inicial.
 
 ## Arquitetura
 
@@ -22,6 +23,8 @@ O projeto foi dividido em dois pacotes:
   - Detector da bandeira azul.
   - No ROS de controle, com parametros e leituras recentes dos sensores.
   - Maquina de estados da missao em arquivo separado.
+  - Estimador geometrico da posicao da bandeira.
+  - Planejador A* sobre o mapa de ocupacao.
   - Modelos simples para estado e deteccao visual.
   - Launch principal da missao.
   - YAML de configuracao.
@@ -41,6 +44,9 @@ publica:
 - Erro horizontal normalizado da bandeira.
 - Area relativa da bandeira na imagem.
 - Centro e tamanho da caixa detectada.
+
+Com o tamanho real aproximado da bandeira e o campo de visao da camera, o
+controle estima distancia, angulo e posicao `(x, y)` da bandeira no mapa.
 
 ## Percepcao por LIDAR
 
@@ -64,9 +70,9 @@ O no `robo_mapper` publica `/grid_map`.
 - `0`: celula livre observada por LIDAR.
 - `100`: celula ocupada ou posicao atual do robo.
 
-O mapa nao e usado como planejador global nesta versao, mas documenta a
-percepcao espacial e deixa caminho aberto para A* ou Dijkstra em trabalhos
-futuros.
+O mapa agora tambem e usado pelo A*. Celulas ocupadas sao bloqueadas, celulas
+desconhecidas sao permitidas com custo maior e os obstaculos sao inflados para
+evitar caminhos raspando nas bordas.
 
 ## Maquina de Estados
 
@@ -81,9 +87,12 @@ Estados implementados:
   - Faz varredura com a camera sem assumir a posicao da bandeira.
 - `BANDEIRA_DETECTADA`
   - Confirma a deteccao e escolhe a proxima acao.
-- `NAVIGANDO_PARA_BANDEIRA`
-  - Usa o erro visual para alinhar o robo.
-  - Avanca mais quando esta bem alinhado.
+- `ESTIMANDO_POSICAO_BANDEIRA`
+  - Calcula uma hipotese da posicao da bandeira no mapa.
+- `PLANEJANDO_PARA_BANDEIRA`
+  - Roda A* ate uma celula livre perto da bandeira estimada.
+- `SEGUINDO_CAMINHO_PARA_BANDEIRA`
+  - Segue waypoints e replaneja quando necessario.
 - `DESVIANDO_OBSTACULO`
   - Usa LIDAR para girar para o lado mais livre.
   - So termina quando ha folga frontal e lateral.
@@ -93,17 +102,20 @@ Estados implementados:
   - Ajusta orientacao e aproxima devagar.
 - `CAPTURANDO_BANDEIRA`
   - Para o robo e fecha a garra.
+- `PLANEJANDO_RETORNO_BASE` e `RETORNANDO_BASE`
+  - Usam A* para voltar ate a pose inicial do robo.
+- `ENTREGANDO_BANDEIRA` e `MISSAO_CONCLUIDA`
+  - Abrem a garra na base e encerram a missao.
 
 ## Estrategia de Navegacao
 
-A solucao principal e reativa.
-
-Nao foi necessario usar A* para a entrega minima porque o objetivo pode ser
-atingido com:
+A solucao principal e hibrida:
 
 - Busca reativa por curva/varredura de camera.
 - Deteccao visual da label correta.
-- Controle proporcional pelo erro horizontal da imagem.
+- Estimativa geometrica da posicao da bandeira.
+- Planejamento A* no `/grid_map` para aproximacao e retorno.
+- Controle proporcional pelo erro horizontal da imagem no ajuste fino.
 - Desvio local de obstaculos por LIDAR.
 - Redeteccao caso a bandeira saia do campo de visao.
 
@@ -114,11 +126,11 @@ atingido com:
 - Maquina de estados documentada no codigo.
 - Parametros concentrados em YAML.
 - Logs explicativos para entender o estado atual do robo.
-- Mapa de ocupacao disponivel no RViz.
+- Caminho planejado e alvo estimado disponiveis para debug no RViz.
 
 ## Limitacoes e Proximos Passos
 
 - A captura fisica depende do ajuste fino da posicao final no Gazebo.
-- O mapa ainda nao e usado para planejamento global.
-- Um Trabalho 2 poderia adicionar retorno para base e planejamento A* sobre o
-  `/grid_map`.
+- A posicao da bandeira vem de uma estimativa visual, entao pode variar quando
+  a bandeira esta cortada, longe ou parcialmente escondida.
+- O A* aproxima o robo do alvo; a camera ainda e essencial no ajuste final.

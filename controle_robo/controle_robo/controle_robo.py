@@ -4,16 +4,19 @@ import time
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
-from geometry_msgs.msg import TwistStamped
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PoseStamped, TwistStamped
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from sensor_msgs.msg import Imu, LaserScan
 from std_msgs.msg import Float32MultiArray, Float64MultiArray
 
 from scipy.spatial.transform import Rotation as R
 
+from controle_robo.estimador_bandeira import EstimadorBandeira
 from controle_robo.maquina_estados import MaquinaEstadosMissao
-from controle_robo.modelos_missao import DeteccaoBandeira
+from controle_robo.modelos_missao import DeteccaoBandeira, EstimativaBandeira
+from controle_robo.planejador_grade import MapaGrade, PlanejadorGrade
 
 
 class ControleRobo(Node):
@@ -42,6 +45,35 @@ class ControleRobo(Node):
         self.x = 0.0
         self.y = 0.0
         self.yaw = 0.0
+        self.pose_base = None
+
+        self.mapa_grade = None
+        self.ultimo_instante_mapa = None
+        self.estimativa_bandeira = EstimativaBandeira()
+        self.caminho_planejado = []
+        self.indice_waypoint = 0
+        self.destino_caminho = None
+        self.alvo_caminho = None
+        self.ultimo_replanejamento_visual = -math.inf
+
+        self.estimador_bandeira = EstimadorBandeira(
+            self.fov_horizontal_camera,
+            self.largura_real_bandeira,
+            self.altura_real_bandeira,
+            self.distancia_minima_estimativa,
+            self.distancia_maxima_estimativa,
+            self.historico_estimativas_bandeira,
+        )
+        self.planejador_grade = PlanejadorGrade(
+            self.custo_desconhecido,
+            self.inflacao_obstaculo_celulas,
+        )
+
+        self.qos_visualizacao = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
 
         self.cmd_vel_pub = self.create_publisher(
             TwistStamped,
@@ -53,10 +85,26 @@ class ControleRobo(Node):
             '/gripper_controller/commands',
             10,
         )
+        self.caminho_pub = self.create_publisher(
+            Path,
+            '/caminho_planejado',
+            self.qos_visualizacao,
+        )
+        self.alvo_estimado_pub = self.create_publisher(
+            PoseStamped,
+            '/bandeira_azul/alvo_estimado',
+            self.qos_visualizacao,
+        )
 
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.create_subscription(Imu, '/imu', self.imu_callback, 10)
         self.create_subscription(Odometry, '/odom_gt', self.odom_callback, 10)
+        self.create_subscription(
+            OccupancyGrid,
+            self.topico_mapa,
+            self.mapa_callback,
+            10,
+        )
         self.create_subscription(
             Float32MultiArray,
             '/bandeira_azul/deteccao',
@@ -102,6 +150,23 @@ class ControleRobo(Node):
         self.declare_parameter('garra_extensao_captura', 0.0)
         self.declare_parameter('garra_direita_captura', 0.0)
         self.declare_parameter('garra_esquerda_captura', 0.0)
+        self.declare_parameter('usar_planejamento_grade', True)
+        self.declare_parameter('topico_mapa', '/grid_map')
+        self.declare_parameter('fov_horizontal_camera', 1.57)
+        self.declare_parameter('largura_real_bandeira', 0.3)
+        self.declare_parameter('altura_real_bandeira', 0.48)
+        self.declare_parameter('distancia_minima_estimativa', 0.2)
+        self.declare_parameter('distancia_maxima_estimativa', 5.0)
+        self.declare_parameter('confianca_minima_planejamento', 0.70)
+        self.declare_parameter('historico_estimativas_bandeira', 5)
+        self.declare_parameter('custo_desconhecido', 3.0)
+        self.declare_parameter('inflacao_obstaculo_celulas', 1)
+        self.declare_parameter('tolerancia_waypoint', 0.25)
+        self.declare_parameter('tolerancia_alvo_planejado', 0.6)
+        self.declare_parameter('ganho_angular_waypoint', 1.0)
+        self.declare_parameter('velocidade_seguindo_caminho', 0.15)
+        self.declare_parameter('deslocamento_replanejamento_alvo', 1.5)
+        self.declare_parameter('intervalo_minimo_replanejamento_visual', 3.0)
 
         self.velocidade_linear = float(
             self.get_parameter('velocidade_linear').value
@@ -184,6 +249,55 @@ class ControleRobo(Node):
             float(self.get_parameter('garra_direita_captura').value),
             float(self.get_parameter('garra_esquerda_captura').value),
         ]
+        self.usar_planejamento_grade = bool(
+            self.get_parameter('usar_planejamento_grade').value
+        )
+        self.topico_mapa = str(self.get_parameter('topico_mapa').value)
+        self.fov_horizontal_camera = float(
+            self.get_parameter('fov_horizontal_camera').value
+        )
+        self.largura_real_bandeira = float(
+            self.get_parameter('largura_real_bandeira').value
+        )
+        self.altura_real_bandeira = float(
+            self.get_parameter('altura_real_bandeira').value
+        )
+        self.distancia_minima_estimativa = float(
+            self.get_parameter('distancia_minima_estimativa').value
+        )
+        self.distancia_maxima_estimativa = float(
+            self.get_parameter('distancia_maxima_estimativa').value
+        )
+        self.confianca_minima_planejamento = float(
+            self.get_parameter('confianca_minima_planejamento').value
+        )
+        self.historico_estimativas_bandeira = int(
+            self.get_parameter('historico_estimativas_bandeira').value
+        )
+        self.custo_desconhecido = float(
+            self.get_parameter('custo_desconhecido').value
+        )
+        self.inflacao_obstaculo_celulas = int(
+            self.get_parameter('inflacao_obstaculo_celulas').value
+        )
+        self.tolerancia_waypoint = float(
+            self.get_parameter('tolerancia_waypoint').value
+        )
+        self.tolerancia_alvo_planejado = float(
+            self.get_parameter('tolerancia_alvo_planejado').value
+        )
+        self.ganho_angular_waypoint = float(
+            self.get_parameter('ganho_angular_waypoint').value
+        )
+        self.velocidade_seguindo_caminho = float(
+            self.get_parameter('velocidade_seguindo_caminho').value
+        )
+        self.deslocamento_replanejamento_alvo = float(
+            self.get_parameter('deslocamento_replanejamento_alvo').value
+        )
+        self.intervalo_minimo_replanejamento_visual = float(
+            self.get_parameter('intervalo_minimo_replanejamento_visual').value
+        )
 
     def scan_callback(self, msg: LaserScan):
         """Separa a leitura do laser em frente, esquerda e direita."""
@@ -217,8 +331,8 @@ class ControleRobo(Node):
                 distancias_direita.append(distancia)
 
         self.distancia_frontal = min(distancias_frente, default=math.inf)
-        self.distancia_esquerda = min(distancias_esquerda, default=math.inf)
-        self.distancia_direita = min(distancias_direita, default=math.inf)
+        self.distancia_esquerda = min(distancias_esquerda+distancias_frente[:len(distancias_frente)//2], default=math.inf)
+        self.distancia_direita = min(distancias_direita+distancias_frente[len(distancias_frente)//2:], default=math.inf)
         self.obstaculo_a_frente = (
             self.distancia_frontal < self.distancia_obstaculo
         )
@@ -248,6 +362,12 @@ class ControleRobo(Node):
         self.x = msg.pose.pose.position.x
         self.y = msg.pose.pose.position.y
 
+        if self.pose_base is None:
+            self.pose_base = (self.x, self.y)
+            self.get_logger().info(
+                f'Base registrada na pose inicial ({self.x:.2f}, {self.y:.2f}).'
+            )
+
         orientation_q = msg.pose.pose.orientation
         quat = [
             orientation_q.x,
@@ -256,6 +376,19 @@ class ControleRobo(Node):
             orientation_q.w,
         ]
         self.yaw = R.from_quat(quat).as_euler('xyz', degrees=False)[2]
+
+    def mapa_callback(self, msg: OccupancyGrid):
+        self.mapa_grade = msg
+        self.ultimo_instante_mapa = time.monotonic()
+        self.log_periodico(
+            'mapa_recebido',
+            (
+                'Mapa: /grid_map recebido '
+                f'{msg.info.width}x{msg.info.height} '
+                f'res={msg.info.resolution:.2f}m.'
+            ),
+            periodo=5.0,
+        )
 
     def deteccao_bandeira_callback(self, msg: Float32MultiArray):
         if len(msg.data) < 10:
@@ -279,6 +412,12 @@ class ControleRobo(Node):
             centro_y=float(msg.data[5]),
             largura=int(msg.data[6]),
             altura=int(msg.data[7]),
+            largura_imagem=int(msg.data[8]),
+            altura_imagem=int(msg.data[9]),
+            pose_robo_valida=True,
+            x_robo=self.x,
+            y_robo=self.y,
+            yaw_robo=self.yaw,
         )
 
         # Tempo monotonic evita surpresas quando o Gazebo pausa ou reinicia o
@@ -294,6 +433,288 @@ class ControleRobo(Node):
                 f'area={self.deteccao_bandeira.area_relativa:.3f}.'
             ),
             periodo=1.0,
+        )
+
+    def atualizar_estimativa_bandeira(self):
+        det = self.deteccao_bandeira
+        if det.pose_robo_valida:
+            x_referencia = det.x_robo
+            y_referencia = det.y_robo
+            yaw_referencia = det.yaw_robo
+        else:
+            x_referencia = self.x
+            y_referencia = self.y
+            yaw_referencia = self.yaw
+
+        self.estimativa_bandeira = self.estimador_bandeira.estimar(
+            det,
+            x_referencia,
+            y_referencia,
+            yaw_referencia,
+            self.distancia_frontal,
+        )
+
+        est = self.estimativa_bandeira
+        if est.valida:
+            self.publicar_alvo_estimado(est)
+
+        delta_pose = math.hypot(self.x - x_referencia, self.y - y_referencia)
+        delta_yaw = self.normalizar_angulo(self.yaw - yaw_referencia)
+
+        self.log_periodico(
+            'estimativa_bandeira',
+            (
+                'Estimativa bandeira: '
+                f'dist={est.distancia:.2f}m, '
+                f'ang={est.angulo_relativo:+.2f}rad, '
+                f'alvo=({est.x:.2f}, {est.y:.2f}), '
+                f'pose_ref=({x_referencia:.2f}, {y_referencia:.2f}, '
+                f'yaw={yaw_referencia:.2f}), '
+                f'delta_pose={delta_pose:.2f}m, '
+                f'delta_yaw={delta_yaw:+.2f}rad, '
+                f'conf={est.confianca:.2f} '
+                f'[tam={est.confianca_tamanho:.2f}, '
+                f'centro={est.confianca_centro:.2f}, '
+                f'borda={est.confianca_borda:.2f}, '
+                f'lidar={est.confianca_lidar:.2f}].'
+            ),
+            periodo=0.8,
+        )
+        return est
+
+    def estimativa_bandeira_confiavel(self):
+        return (
+            self.estimativa_bandeira.valida
+            and self.estimativa_bandeira.confianca
+            >= self.confianca_minima_planejamento
+        )
+
+    def planejar_para_bandeira(self):
+        if not self.estimativa_bandeira_confiavel():
+            return False, 'estimativa da bandeira ainda nao e confiavel'
+
+        return self.planejar_para(
+            (self.estimativa_bandeira.x, self.estimativa_bandeira.y),
+            'bandeira',
+        )
+
+    def replanejar_para_bandeira_congelada(self):
+        """Recalcula a rota sem trocar o alvo visual ja escolhido.
+
+        Enquanto estamos depurando o A*, a camera serve para escolher o alvo
+        uma vez. Depois disso, obstaculos e mudancas no mapa podem forcar
+        replanejamento, mas sempre para o mesmo ponto estimado.
+        """
+
+        if self.alvo_caminho is None or self.destino_caminho != 'bandeira':
+            return False, 'nao existe alvo congelado da bandeira para replanejar'
+
+        alvo_congelado = self.alvo_caminho
+        sucesso, motivo = self.planejar_para(alvo_congelado, 'bandeira')
+        if not sucesso:
+            self.alvo_caminho = alvo_congelado
+            self.destino_caminho = 'bandeira'
+        return sucesso, motivo
+
+    def tem_alvo_bandeira_congelado(self):
+        return self.destino_caminho == 'bandeira' and self.alvo_caminho is not None
+
+    def planejar_para_base(self):
+        if self.pose_base is None:
+            return False, 'pose inicial da base ainda nao foi registrada'
+
+        return self.planejar_para(self.pose_base, 'base')
+
+    def planejar_para(self, alvo_xy, destino):
+        if not self.usar_planejamento_grade:
+            return False, 'planejamento por grade desabilitado'
+        if self.mapa_grade is None:
+            return False, 'controle ainda nao recebeu /grid_map'
+
+        resultado = self.planejador_grade.planejar(
+            self.mapa_grade,
+            (self.x, self.y),
+            alvo_xy,
+        )
+        if not resultado.sucesso:
+            self.limpar_caminho()
+            return False, resultado.motivo
+
+        self.caminho_planejado = resultado.waypoints
+        self.indice_waypoint = 0
+        self.destino_caminho = destino
+        self.alvo_caminho = (float(alvo_xy[0]), float(alvo_xy[1]))
+        if destino == 'bandeira':
+            self.ultimo_replanejamento_visual = time.monotonic()
+        self.pular_waypoints_proximos()
+        self.publicar_caminho_planejado()
+        motivo = (
+            f'{resultado.motivo}; '
+            f'alvo=({self.alvo_caminho[0]:.2f}, {self.alvo_caminho[1]:.2f})'
+        )
+        self.log_periodico(
+            f'planejamento_{destino}',
+            (
+                f'Planejamento para {destino}: {motivo}; '
+                f'custo={resultado.custo:.2f}.'
+            ),
+            periodo=0.2,
+        )
+        return True, motivo
+
+    def limpar_caminho(self):
+        self.caminho_planejado = []
+        self.indice_waypoint = 0
+        self.destino_caminho = None
+        self.alvo_caminho = None
+        self.publicar_caminho_planejado()
+
+    def caminho_ativo(self):
+        return self.indice_waypoint < len(self.caminho_planejado)
+
+    def waypoint_atual(self):
+        if not self.caminho_ativo():
+            return None
+        return self.caminho_planejado[self.indice_waypoint]
+
+    def pular_waypoints_proximos(self):
+        while self.caminho_ativo():
+            wx, wy = self.waypoint_atual()
+            if math.hypot(wx - self.x, wy - self.y) > self.tolerancia_waypoint:
+                break
+            self.indice_waypoint += 1
+
+    def comando_para_waypoint(self):
+        self.pular_waypoints_proximos()
+        waypoint = self.waypoint_atual()
+        if waypoint is None:
+            return None
+
+        wx, wy = waypoint
+        dx = wx - self.x
+        dy = wy - self.y
+        distancia = math.hypot(dx, dy)
+        alvo_yaw = math.atan2(dy, dx)
+        erro_yaw = self.normalizar_angulo(alvo_yaw - self.yaw)
+
+        angular = self.limitar(
+            self.ganho_angular_waypoint * erro_yaw,
+            -self.velocidade_giro_busca,
+            self.velocidade_giro_busca,
+        )
+
+        fator_alinhamento = max(0.0, 1.0 - abs(erro_yaw) / 1.2)
+        if abs(erro_yaw) > 0.9:
+            fator_alinhamento = 0.0
+
+        linear = (
+            self.velocidade_seguindo_caminho
+            * fator_alinhamento
+            * self.fator_velocidade_por_distancia()
+        )
+        return linear, angular, distancia, erro_yaw
+
+    def waypoint_bloqueado(self):
+        waypoint = self.waypoint_atual()
+        if waypoint is None or self.mapa_grade is None:
+            return False
+
+        mapa = MapaGrade(self.mapa_grade)
+        celula = mapa.world_to_grid(*waypoint)
+        
+        return mapa.valor(celula) >= 100
+
+    def alvo_bandeira_mudou_para_replanejar(self):
+        if self.destino_caminho != 'bandeira' or self.alvo_caminho is None:
+            return False
+        if not self.estimativa_bandeira_confiavel():
+            return False
+
+        agora = time.monotonic()
+        if (
+            agora - self.ultimo_replanejamento_visual
+            < self.intervalo_minimo_replanejamento_visual
+        ):
+            return False
+
+        delta = math.hypot(
+            self.estimativa_bandeira.x - self.alvo_caminho[0],
+            self.estimativa_bandeira.y - self.alvo_caminho[1],
+        )
+        if delta < self.deslocamento_replanejamento_alvo:
+            return False
+
+        self.ultimo_replanejamento_visual = agora
+        self.log_periodico(
+            'replanejamento_alvo_bandeira',
+            (
+                'Replanejamento: alvo visual da bandeira mudou '
+                f'{delta:.2f} m desde o ultimo A*; '
+                f'antigo=({self.alvo_caminho[0]:.2f}, '
+                f'{self.alvo_caminho[1]:.2f}), '
+                f'novo=({self.estimativa_bandeira.x:.2f}, '
+                f'{self.estimativa_bandeira.y:.2f}).'
+            ),
+            periodo=0.5,
+        )
+        return True
+
+    def chegou_perto_da_bandeira_planejada(self):
+        if self.destino_caminho != 'bandeira' or self.alvo_caminho is None:
+            return False
+
+        distancia = math.hypot(
+            self.alvo_caminho[0] - self.x,
+            self.alvo_caminho[1] - self.y,
+        )
+        return distancia <= self.tolerancia_alvo_planejado
+
+    def chegou_na_base(self):
+        if self.pose_base is None:
+            return False
+
+        bx, by = self.pose_base
+        return math.hypot(bx - self.x, by - self.y) <= self.tolerancia_alvo_planejado
+
+    def publicar_caminho_planejado(self):
+        msg = Path()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'map'
+
+        for x, y in self.caminho_planejado[self.indice_waypoint:]:
+            pose = PoseStamped()
+            pose.header = msg.header
+            pose.pose.position.x = float(x)
+            pose.pose.position.y = float(y)
+            pose.pose.orientation.w = 1.0
+            msg.poses.append(pose)
+
+        self.caminho_pub.publish(msg)
+
+    def publicar_alvo_estimado(self, estimativa):
+        msg = PoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'map'
+        msg.pose.position.x = float(estimativa.x)
+        msg.pose.position.y = float(estimativa.y)
+        msg.pose.orientation.z = math.sin(estimativa.angulo_mundo / 2.0)
+        msg.pose.orientation.w = math.cos(estimativa.angulo_mundo / 2.0)
+        self.alvo_estimado_pub.publish(msg)
+
+    def fator_velocidade_por_distancia(self):
+        if math.isinf(self.distancia_frontal):
+            return self.fator_velocidade_livre
+        if self.distancia_frontal <= self.distancia_obstaculo:
+            return self.fator_velocidade_proxima
+        if self.distancia_frontal >= self.distancia_velocidade_livre:
+            return self.fator_velocidade_livre
+
+        faixa = self.distancia_velocidade_livre - self.distancia_obstaculo
+        progresso = (self.distancia_frontal - self.distancia_obstaculo) / faixa
+        return (
+            self.fator_velocidade_proxima
+            + progresso
+            * (self.fator_velocidade_livre - self.fator_velocidade_proxima)
         )
 
     def publicar_garra(self, posicoes):
@@ -330,6 +751,10 @@ class ControleRobo(Node):
     @staticmethod
     def limitar(valor: float, minimo: float, maximo: float):
         return max(minimo, min(maximo, valor))
+
+    @staticmethod
+    def normalizar_angulo(angulo: float):
+        return math.atan2(math.sin(angulo), math.cos(angulo))
 
     @staticmethod
     def formatar_distancia(distancia: float):

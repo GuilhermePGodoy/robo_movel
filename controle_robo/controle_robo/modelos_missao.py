@@ -5,11 +5,19 @@ from enum import Enum
 class EstadoMissao(Enum):
     EXPLORANDO = 'EXPLORANDO'
     BANDEIRA_DETECTADA = 'BANDEIRA_DETECTADA'
-    NAVIGANDO_PARA_BANDEIRA = 'NAVIGANDO_PARA_BANDEIRA'
+    ESTIMANDO_POSICAO_BANDEIRA = 'ESTIMANDO_POSICAO_BANDEIRA'
+    PLANEJANDO_PARA_BANDEIRA = 'PLANEJANDO_PARA_BANDEIRA'
+    SEGUINDO_CAMINHO_PARA_BANDEIRA = 'SEGUINDO_CAMINHO_PARA_BANDEIRA'
     DESVIANDO_OBSTACULO = 'DESVIANDO_OBSTACULO'
     REDETECTANDO_BANDEIRA = 'REDETECTANDO_BANDEIRA'
+    REPLANEJANDO_CAMINHO = 'REPLANEJANDO_CAMINHO'
+    FALHA_PLANEJAMENTO = 'FALHA_PLANEJAMENTO'
     POSICIONANDO_PARA_COLETA = 'POSICIONANDO_PARA_COLETA'
     CAPTURANDO_BANDEIRA = 'CAPTURANDO_BANDEIRA'
+    PLANEJANDO_RETORNO_BASE = 'PLANEJANDO_RETORNO_BASE'
+    RETORNANDO_BASE = 'RETORNANDO_BASE'
+    ENTREGANDO_BANDEIRA = 'ENTREGANDO_BANDEIRA'
+    MISSAO_CONCLUIDA = 'MISSAO_CONCLUIDA'
 
 
 @dataclass
@@ -24,3 +32,41 @@ class DeteccaoBandeira:
     area_relativa: float = 0.0
     largura: int = 0
     altura: int = 0
+    largura_imagem: int = 0
+    altura_imagem: int = 0
+    pose_robo_valida: bool = False
+    x_robo: float = 0.0
+    y_robo: float = 0.0
+    yaw_robo: float = 0.0
+
+
+@dataclass
+class EstimativaBandeira:
+    """Hipotese da posicao da bandeira no mapa."""
+
+    valida: bool = False
+    x: float = 0.0
+    y: float = 0.0
+    distancia: float = 0.0
+    angulo_relativo: float = 0.0
+    angulo_mundo: float = 0.0
+    confianca: float = 0.0
+    confianca_tamanho: float = 0.0
+    confianca_centro: float = 0.0
+    confianca_borda: float = 0.0
+    confianca_lidar: float = 0.0
+    instante: float = 0.0
+
+
+@dataclass
+class ResultadoPlanejamento:
+    """Resultado do A* usado pela maquina de estados."""
+
+    sucesso: bool = False
+    waypoints: list = None
+    custo: float = 0.0
+    motivo: str = ''
+
+    def __post_init__(self):
+        if self.waypoints is None:
+            self.waypoints = []
