@@ -23,8 +23,7 @@ launch:
 
 controle_robo:
   ros__parameters:
-    velocidade_linear: 0.2
-    velocidade_angular_desvio: -0.5
+    velocidade_angular_desvio: -0.4
     distancia_obstaculo: 0.6
     angulo_frontal_graus: 30.0
     distancia_lateral_desvio: 0.1
@@ -43,13 +42,10 @@ controle_robo:
     erro_alinhamento_bandeira: 0.12
 
     area_minima_bandeira: 5.0
-    area_posicionamento_bandeira: 0.02
+    area_posicionamento_bandeira: 0.035
     area_coleta_bandeira: 0.07
-    distancia_posicionamento: 0.2
-    distancia_coleta: 0.2
 
     tempo_perda_bandeira: 1.0
-    tempo_reexploracao: 3.0
     tempo_minimo_desvio: 1.0
 
     habilitar_garra: true
@@ -80,6 +76,10 @@ controle_robo:
     velocidade_seguindo_caminho: 0.15
     deslocamento_replanejamento_alvo: 1.5
     intervalo_minimo_replanejamento_visual: 3.0
+    distancia_aproximacao_bandeira: 0.55
+    margem_borda_bandeira_px: 8
+    area_minima_bandeira_inteira: 0.003
+    frames_bandeira_inteira: 3
 
     label_bandeira_azul: 25
     tolerancia_cor_bandeira: 0.0

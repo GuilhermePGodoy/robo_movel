@@ -11,7 +11,6 @@ from controle_robo.launch_config import aplicar_config_file
 
 CONFIGURACOES_CONTROLE = [
     'use_sim_time',
-    'velocidade_linear',
     'velocidade_angular_desvio',
     'distancia_obstaculo',
     'angulo_frontal_graus',
@@ -28,10 +27,7 @@ CONFIGURACOES_CONTROLE = [
     'area_minima_bandeira',
     'area_posicionamento_bandeira',
     'area_coleta_bandeira',
-    'distancia_posicionamento',
-    'distancia_coleta',
     'tempo_perda_bandeira',
-    'tempo_reexploracao',
     'tempo_minimo_desvio',
     'habilitar_garra',
     'garra_extensao_aberta',
@@ -62,6 +58,10 @@ CONFIGURACOES_CONTROLE = [
     'velocidade_seguindo_caminho',
     'deslocamento_replanejamento_alvo',
     'intervalo_minimo_replanejamento_visual',
+    'distancia_aproximacao_bandeira',
+    'margem_borda_bandeira_px',
+    'area_minima_bandeira_inteira',
+    'frames_bandeira_inteira',
     'topico_cmd_vel',
     'topico_scan',
     'topico_imu',
@@ -99,11 +99,6 @@ def generate_launch_description():
         'use_sim_time',
         default_value='true',
         description='Usa o relogio publicado pelo simulador Gazebo',
-    )
-    velocidade_linear_arg = DeclareLaunchArgument(
-        'velocidade_linear',
-        default_value='0.1',
-        description='Velocidade linear base ao seguir a bandeira',
     )
     velocidade_angular_desvio_arg = DeclareLaunchArgument(
         'velocidade_angular_desvio',
@@ -177,7 +172,7 @@ def generate_launch_description():
     )
     area_posicionamento_bandeira_arg = DeclareLaunchArgument(
         'area_posicionamento_bandeira',
-        default_value='0.02',
+        default_value='0.035',
         description='Area relativa para iniciar ajuste fino de coleta',
     )
     area_coleta_bandeira_arg = DeclareLaunchArgument(
@@ -185,25 +180,10 @@ def generate_launch_description():
         default_value='0.07',
         description='Area relativa para considerar a bandeira alcancada',
     )
-    distancia_posicionamento_arg = DeclareLaunchArgument(
-        'distancia_posicionamento',
-        default_value='0.9',
-        description='Distancia frontal para iniciar ajuste fino de coleta',
-    )
-    distancia_coleta_arg = DeclareLaunchArgument(
-        'distancia_coleta',
-        default_value='0.45',
-        description='Distancia frontal para considerar a bandeira alcancada',
-    )
     tempo_perda_bandeira_arg = DeclareLaunchArgument(
         'tempo_perda_bandeira',
         default_value='1.0',
         description='Tempo sem deteccao antes de considerar a bandeira perdida',
-    )
-    tempo_reexploracao_arg = DeclareLaunchArgument(
-        'tempo_reexploracao',
-        default_value='3.0',
-        description='Tempo tentando redetectar antes de voltar a explorar',
     )
     tempo_minimo_desvio_arg = DeclareLaunchArgument(
         'tempo_minimo_desvio',
@@ -350,6 +330,26 @@ def generate_launch_description():
         default_value='3.0',
         description='Cooldown entre replanejamentos guiados pela camera',
     )
+    distancia_aproximacao_bandeira_arg = DeclareLaunchArgument(
+        'distancia_aproximacao_bandeira',
+        default_value='0.55',
+        description='Distancia antes da estimativa da bandeira usada como alvo do A*',
+    )
+    margem_borda_bandeira_px_arg = DeclareLaunchArgument(
+        'margem_borda_bandeira_px',
+        default_value='8',
+        description='Margem minima da bbox da bandeira ate a borda da imagem',
+    )
+    area_minima_bandeira_inteira_arg = DeclareLaunchArgument(
+        'area_minima_bandeira_inteira',
+        default_value='0.003',
+        description='Area relativa minima para aceitar a bandeira inteira',
+    )
+    frames_bandeira_inteira_arg = DeclareLaunchArgument(
+        'frames_bandeira_inteira',
+        default_value='3',
+        description='Frames consecutivos para confirmar bandeira inteira',
+    )
 
     topico_cmd_vel_arg = DeclareLaunchArgument(
         'topico_cmd_vel',
@@ -467,10 +467,6 @@ def generate_launch_description():
                     LaunchConfiguration('use_sim_time'),
                     value_type=bool,
                 ),
-                'velocidade_linear': ParameterValue(
-                    LaunchConfiguration('velocidade_linear'),
-                    value_type=float,
-                ),
                 'velocidade_angular_desvio': ParameterValue(
                     LaunchConfiguration('velocidade_angular_desvio'),
                     value_type=float,
@@ -535,20 +531,8 @@ def generate_launch_description():
                     LaunchConfiguration('area_coleta_bandeira'),
                     value_type=float,
                 ),
-                'distancia_posicionamento': ParameterValue(
-                    LaunchConfiguration('distancia_posicionamento'),
-                    value_type=float,
-                ),
-                'distancia_coleta': ParameterValue(
-                    LaunchConfiguration('distancia_coleta'),
-                    value_type=float,
-                ),
                 'tempo_perda_bandeira': ParameterValue(
                     LaunchConfiguration('tempo_perda_bandeira'),
-                    value_type=float,
-                ),
-                'tempo_reexploracao': ParameterValue(
-                    LaunchConfiguration('tempo_reexploracao'),
                     value_type=float,
                 ),
                 'tempo_minimo_desvio': ParameterValue(
@@ -653,6 +637,22 @@ def generate_launch_description():
                     ),
                     value_type=float,
                 ),
+                'distancia_aproximacao_bandeira': ParameterValue(
+                    LaunchConfiguration('distancia_aproximacao_bandeira'),
+                    value_type=float,
+                ),
+                'margem_borda_bandeira_px': ParameterValue(
+                    LaunchConfiguration('margem_borda_bandeira_px'),
+                    value_type=float,
+                ),
+                'area_minima_bandeira_inteira': ParameterValue(
+                    LaunchConfiguration('area_minima_bandeira_inteira'),
+                    value_type=float,
+                ),
+                'frames_bandeira_inteira': ParameterValue(
+                    LaunchConfiguration('frames_bandeira_inteira'),
+                    value_type=int,
+                ),
             }
         ],
         remappings=[
@@ -675,7 +675,6 @@ def generate_launch_description():
         config_file_arg,
         aplica_config_file,
         use_sim_time_arg,
-        velocidade_linear_arg,
         velocidade_angular_desvio_arg,
         distancia_obstaculo_arg,
         angulo_frontal_graus_arg,
@@ -692,10 +691,7 @@ def generate_launch_description():
         area_minima_bandeira_arg,
         area_posicionamento_bandeira_arg,
         area_coleta_bandeira_arg,
-        distancia_posicionamento_arg,
-        distancia_coleta_arg,
         tempo_perda_bandeira_arg,
-        tempo_reexploracao_arg,
         tempo_minimo_desvio_arg,
         habilitar_garra_arg,
         garra_extensao_aberta_arg,
@@ -725,6 +721,10 @@ def generate_launch_description():
         velocidade_seguindo_caminho_arg,
         deslocamento_replanejamento_alvo_arg,
         intervalo_minimo_replanejamento_visual_arg,
+        distancia_aproximacao_bandeira_arg,
+        margem_borda_bandeira_px_arg,
+        area_minima_bandeira_inteira_arg,
+        frames_bandeira_inteira_arg,
         topico_cmd_vel_arg,
         topico_scan_arg,
         topico_imu_arg,

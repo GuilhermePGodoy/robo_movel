@@ -34,7 +34,6 @@ class ControleRobo(Node):
         # consulta os valores mais recentes e decide o proximo comando.
         self.deteccao_bandeira = DeteccaoBandeira()
         self.ultimo_instante_bandeira = None
-        self.ultimo_erro_bandeira = 0.0
 
         self.obstaculo_a_frente = False
         self.distancia_frontal = math.inf
@@ -122,7 +121,6 @@ class ControleRobo(Node):
     def configurar_parametros(self):
         """Declara e le os parametros usados pelo controle da missao."""
 
-        self.declare_parameter('velocidade_linear', 0.1)
         self.declare_parameter('velocidade_angular_desvio', -0.3)
         self.declare_parameter('distancia_obstaculo', 0.5)
         self.declare_parameter('angulo_frontal_graus', 30.0)
@@ -136,12 +134,9 @@ class ControleRobo(Node):
         self.declare_parameter('velocidade_giro_busca', 0.25)
         self.declare_parameter('ganho_angular_bandeira', 0.9)
         self.declare_parameter('erro_alinhamento_bandeira', 0.12)
-        self.declare_parameter('area_posicionamento_bandeira', 0.02)
+        self.declare_parameter('area_posicionamento_bandeira', 0.035)
         self.declare_parameter('area_coleta_bandeira', 0.07)
-        self.declare_parameter('distancia_posicionamento', 0.9)
-        self.declare_parameter('distancia_coleta', 0.45)
         self.declare_parameter('tempo_perda_bandeira', 1.0)
-        self.declare_parameter('tempo_reexploracao', 3.0)
         self.declare_parameter('tempo_minimo_desvio', 0.8)
         self.declare_parameter('habilitar_garra', True)
         self.declare_parameter('garra_extensao_aberta', 0.0)
@@ -167,10 +162,11 @@ class ControleRobo(Node):
         self.declare_parameter('velocidade_seguindo_caminho', 0.15)
         self.declare_parameter('deslocamento_replanejamento_alvo', 1.5)
         self.declare_parameter('intervalo_minimo_replanejamento_visual', 3.0)
+        self.declare_parameter('distancia_aproximacao_bandeira', 0.55)
+        self.declare_parameter('margem_borda_bandeira_px', 8.0)
+        self.declare_parameter('area_minima_bandeira_inteira', 0.003)
+        self.declare_parameter('frames_bandeira_inteira', 3)
 
-        self.velocidade_linear = float(
-            self.get_parameter('velocidade_linear').value
-        )
         self.velocidade_angular_desvio = abs(float(
             self.get_parameter('velocidade_angular_desvio').value
         ))
@@ -221,17 +217,8 @@ class ControleRobo(Node):
         self.area_coleta_bandeira = float(
             self.get_parameter('area_coleta_bandeira').value
         )
-        self.distancia_posicionamento = float(
-            self.get_parameter('distancia_posicionamento').value
-        )
-        self.distancia_coleta = float(
-            self.get_parameter('distancia_coleta').value
-        )
         self.tempo_perda_bandeira = float(
             self.get_parameter('tempo_perda_bandeira').value
-        )
-        self.tempo_reexploracao = float(
-            self.get_parameter('tempo_reexploracao').value
         )
         self.tempo_minimo_desvio = float(
             self.get_parameter('tempo_minimo_desvio').value
@@ -298,6 +285,18 @@ class ControleRobo(Node):
         self.intervalo_minimo_replanejamento_visual = float(
             self.get_parameter('intervalo_minimo_replanejamento_visual').value
         )
+        self.distancia_aproximacao_bandeira = float(
+            self.get_parameter('distancia_aproximacao_bandeira').value
+        )
+        self.margem_borda_bandeira_px = float(
+            self.get_parameter('margem_borda_bandeira_px').value
+        )
+        self.area_minima_bandeira_inteira = float(
+            self.get_parameter('area_minima_bandeira_inteira').value
+        )
+        self.frames_bandeira_inteira = int(
+            self.get_parameter('frames_bandeira_inteira').value
+        )
 
     def scan_callback(self, msg: LaserScan):
         """Separa a leitura do laser em frente, esquerda e direita."""
@@ -331,15 +330,30 @@ class ControleRobo(Node):
                 distancias_direita.append(distancia)
 
         self.distancia_frontal = min(distancias_frente, default=math.inf)
-        self.distancia_esquerda = min(distancias_esquerda+distancias_frente[:len(distancias_frente)//2], default=math.inf)
-        self.distancia_direita = min(distancias_direita+distancias_frente[len(distancias_frente)//2:], default=math.inf)
+        self.distancia_esquerda = min(distancias_esquerda, default=math.inf)
+        self.distancia_direita = min(distancias_direita, default=math.inf)
+
+        metade_frente = len(distancias_frente) // 2
+        distancia_esquerda_frente = min(
+            distancias_esquerda + distancias_frente[:metade_frente],
+            default=math.inf,
+        )
+        distancia_direita_frente = min(
+            distancias_direita + distancias_frente[metade_frente:],
+            default=math.inf,
+        )
+
         self.obstaculo_a_frente = (
             self.distancia_frontal < self.distancia_obstaculo
+            or self.distancia_direita < 0.45 * self.distancia_obstaculo
+            or self.distancia_esquerda < 0.45 * self.distancia_obstaculo
         )
 
         # Z angular positivo gira para a esquerda; negativo gira para a direita.
         self.direcao_desvio = (
-            1.0 if self.distancia_esquerda >= self.distancia_direita else -1.0
+            1.0
+            if distancia_esquerda_frente >= distancia_direita_frente
+            else -1.0
         )
 
         if self.obstaculo_a_frente:
@@ -423,8 +437,6 @@ class ControleRobo(Node):
         # Tempo monotonic evita surpresas quando o Gazebo pausa ou reinicia o
         # relogio simulado durante os testes.
         self.ultimo_instante_bandeira = time.monotonic()
-        self.ultimo_erro_bandeira = self.deteccao_bandeira.erro_x
-
         self.log_periodico(
             'deteccao_bandeira',
             (
@@ -483,19 +495,61 @@ class ControleRobo(Node):
         return est
 
     def estimativa_bandeira_confiavel(self):
-        return (
-            self.estimativa_bandeira.valida
-            and self.estimativa_bandeira.confianca
-            >= self.confianca_minima_planejamento
-        )
+        if not self.estimativa_bandeira.valida:
+            return False
+        if self.estimativa_bandeira.confianca < self.confianca_minima_planejamento:
+            return False
+        if not self.estimativa_bandeira_dentro_do_mapa():
+            alvo = self.ponto_aproximacao_bandeira()
+            self.estimador_bandeira.limpar_historico()
+            self.log_periodico(
+                'estimativa_fora_mapa',
+                (
+                    'Estimativa rejeitada: ponto de aproximacao fora do mapa '
+                    f'({alvo[0]:.2f}, {alvo[1]:.2f}).'
+                ),
+                periodo=1.0,
+                nivel='warn',
+            )
+            return False
+        return True
+
+    def estimativa_bandeira_dentro_do_mapa(self):
+        if self.mapa_grade is None:
+            return True
+
+        mapa = MapaGrade(self.mapa_grade)
+        alvo = self.ponto_aproximacao_bandeira()
+        return mapa.celula_valida(mapa.world_to_grid(*alvo))
 
     def planejar_para_bandeira(self):
         if not self.estimativa_bandeira_confiavel():
             return False, 'estimativa da bandeira ainda nao e confiavel'
 
-        return self.planejar_para(
-            (self.estimativa_bandeira.x, self.estimativa_bandeira.y),
-            'bandeira',
+        alvo_aproximacao = self.ponto_aproximacao_bandeira()
+        sucesso, motivo = self.planejar_para(alvo_aproximacao, 'bandeira')
+        if sucesso:
+            motivo = (
+                f'{motivo}; estimativa_real='
+                f'({self.estimativa_bandeira.x:.2f}, '
+                f'{self.estimativa_bandeira.y:.2f})'
+            )
+        return sucesso, motivo
+
+    def ponto_aproximacao_bandeira(self):
+        est = self.estimativa_bandeira
+        dx = self.x - est.x
+        dy = self.y - est.y
+        distancia = math.hypot(dx, dy)
+        afastamento = max(0.0, self.distancia_aproximacao_bandeira)
+
+        if distancia <= afastamento or distancia <= 1e-6:
+            return est.x, est.y
+
+        escala = afastamento / distancia
+        return (
+            est.x + dx * escala,
+            est.y + dy * escala,
         )
 
     def replanejar_para_bandeira_congelada(self):
@@ -511,7 +565,7 @@ class ControleRobo(Node):
 
         alvo_congelado = self.alvo_caminho
         sucesso, motivo = self.planejar_para(alvo_congelado, 'bandeira')
-        if not sucesso:
+        if not sucesso and 'fora dos limites do mapa' not in motivo:
             self.alvo_caminho = alvo_congelado
             self.destino_caminho = 'bandeira'
         return sucesso, motivo

@@ -168,3 +168,6 @@ class EstimadorBandeira:
             confianca_lidar=ultima.confianca_lidar,
             instante=ultima.instante,
         )
+
+    def limpar_historico(self):
+        self.historico.clear()
