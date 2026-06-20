@@ -51,7 +51,8 @@ class EstimadorBandeira:
             self.distancia_minima <= distancia <= self.distancia_maxima
         )
 
-        deslocamento_x = det.centro_x - det.largura_imagem / 2.0
+        centro_x_alvo, erro_x_alvo = self.centro_x_para_estimativa(det)
+        deslocamento_x = centro_x_alvo - det.largura_imagem / 2.0
         # Na imagem, x cresce para a direita. No plano do robo/mapa, yaw
         # positivo gira para a esquerda. Por isso o sinal precisa ser invertido:
         # bandeira a direita da imagem significa angulo relativo negativo.
@@ -62,11 +63,11 @@ class EstimadorBandeira:
         y_alvo = y_robo + distancia * math.sin(angulo_mundo)
 
         confianca_tamanho = self.confianca_tamanho(det)
-        confianca_centro = max(0.0, 1.0 - abs(det.erro_x))
+        confianca_centro = max(0.0, 1.0 - abs(erro_x_alvo))
         confianca_borda = self.confianca_borda(det)
         confianca_lidar = self.confianca_lidar(
             distancia,
-            det.erro_x,
+            erro_x_alvo,
             distancia_frontal,
         )
 
@@ -102,6 +103,19 @@ class EstimadorBandeira:
 
     def focal_pixels(self, largura_imagem):
         return largura_imagem / (2.0 * math.tan(self.fov_horizontal_camera / 2.0))
+
+    @staticmethod
+    def centro_x_para_estimativa(det):
+        """Usa a haste como referencia horizontal quando ela foi calculada."""
+
+        haste_disponivel = (
+            det.centro_x_haste > 0.0
+            or abs(det.erro_x_haste) > 1e-9
+        )
+        if haste_disponivel:
+            return det.centro_x_haste, det.erro_x_haste
+
+        return det.centro_x, det.erro_x
 
     @staticmethod
     def confianca_tamanho(det):

@@ -34,6 +34,8 @@ CONFIGURACOES_MISSAO = [
     'area_minima_bandeira',
     'area_posicionamento_bandeira',
     'area_coleta_bandeira',
+    'distancia_coleta_bandeira',
+    'limite_obstaculo_semantico_posicionamento',
     'tempo_perda_bandeira',
     'tempo_minimo_desvio',
     'habilitar_garra',
@@ -44,6 +46,7 @@ CONFIGURACOES_MISSAO = [
     'garra_direita_captura',
     'garra_esquerda_captura',
     'label_bandeira_azul',
+    'label_obstaculo',
     'tolerancia_cor_bandeira',
     'debug_detector',
     'publicar_mascara_debug',
@@ -202,6 +205,16 @@ def generate_launch_description():
         default_value='0.07',
         description='Area relativa para considerar a bandeira alcancada',
     )
+    distancia_coleta_bandeira_arg = DeclareLaunchArgument(
+        'distancia_coleta_bandeira',
+        default_value='0.25',
+        description='Distancia frontal do LIDAR para fechar a garra',
+    )
+    limite_obstaculo_semantico_posicionamento_arg = DeclareLaunchArgument(
+        'limite_obstaculo_semantico_posicionamento',
+        default_value='0.02',
+        description='Fracao maxima de obstaculo central antes da coleta',
+    )
     tempo_perda_bandeira_arg = DeclareLaunchArgument(
         'tempo_perda_bandeira',
         default_value='1.0',
@@ -251,6 +264,11 @@ def generate_launch_description():
         'label_bandeira_azul',
         default_value='25',
         description='Label semantica da bandeira azul no labels_map',
+    )
+    label_obstaculo_arg = DeclareLaunchArgument(
+        'label_obstaculo',
+        default_value='30',
+        description='Label semantica dos obstaculos no labels_map',
     )
     tolerancia_cor_bandeira_arg = DeclareLaunchArgument(
         'tolerancia_cor_bandeira',
@@ -493,6 +511,12 @@ def generate_launch_description():
                 'area_posicionamento_bandeira'
             ),
             'area_coleta_bandeira': LaunchConfiguration('area_coleta_bandeira'),
+            'distancia_coleta_bandeira': LaunchConfiguration(
+                'distancia_coleta_bandeira'
+            ),
+            'limite_obstaculo_semantico_posicionamento': LaunchConfiguration(
+                'limite_obstaculo_semantico_posicionamento'
+            ),
             'tempo_perda_bandeira': LaunchConfiguration('tempo_perda_bandeira'),
             'tempo_minimo_desvio': LaunchConfiguration('tempo_minimo_desvio'),
             'habilitar_garra': LaunchConfiguration('habilitar_garra'),
@@ -511,6 +535,7 @@ def generate_launch_description():
                 'garra_esquerda_captura'
             ),
             'label_bandeira_azul': LaunchConfiguration('label_bandeira_azul'),
+            'label_obstaculo': LaunchConfiguration('label_obstaculo'),
             'tolerancia_cor_bandeira': LaunchConfiguration(
                 'tolerancia_cor_bandeira'
             ),
@@ -611,6 +636,8 @@ def generate_launch_description():
         area_minima_bandeira_arg,
         area_posicionamento_bandeira_arg,
         area_coleta_bandeira_arg,
+        distancia_coleta_bandeira_arg,
+        limite_obstaculo_semantico_posicionamento_arg,
         tempo_perda_bandeira_arg,
         tempo_minimo_desvio_arg,
         habilitar_garra_arg,
@@ -621,6 +648,7 @@ def generate_launch_description():
         garra_direita_captura_arg,
         garra_esquerda_captura_arg,
         label_bandeira_azul_arg,
+        label_obstaculo_arg,
         tolerancia_cor_bandeira_arg,
         debug_detector_arg,
         publicar_mascara_debug_arg,

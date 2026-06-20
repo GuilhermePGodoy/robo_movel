@@ -13,9 +13,6 @@ class EstadoMissao(Enum):
     FALHA_PLANEJAMENTO = 'FALHA_PLANEJAMENTO'
     POSICIONANDO_PARA_COLETA = 'POSICIONANDO_PARA_COLETA'
     CAPTURANDO_BANDEIRA = 'CAPTURANDO_BANDEIRA'
-    PLANEJANDO_RETORNO_BASE = 'PLANEJANDO_RETORNO_BASE'
-    RETORNANDO_BASE = 'RETORNANDO_BASE'
-    ENTREGANDO_BANDEIRA = 'ENTREGANDO_BANDEIRA'
     MISSAO_CONCLUIDA = 'MISSAO_CONCLUIDA'
 
 
@@ -27,6 +24,9 @@ class DeteccaoBandeira:
     centro_x: float = 0.0
     centro_y: float = 0.0
     erro_x: float = 0.0
+    centro_x_haste: float = 0.0
+    erro_x_haste: float = 0.0
+    obstaculo_central_relativo: float = 0.0
     area: float = 0.0
     area_relativa: float = 0.0
     largura: int = 0

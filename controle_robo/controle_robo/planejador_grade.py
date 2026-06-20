@@ -81,9 +81,14 @@ class PlanejadorGrade:
             )
 
         bloqueadas = self.criar_mascara_bloqueada(mapa)
+        bloqueadas_para_destino = set(bloqueadas)
         self.liberar_vizinhanca_do_robo(bloqueadas, inicio)
 
-        destino = self.celula_livre_mais_proxima(mapa, alvo, bloqueadas)
+        destino = self.celula_livre_mais_proxima(
+            mapa,
+            alvo,
+            bloqueadas_para_destino,
+        )
         if destino is None:
             return ResultadoPlanejamento(
                 motivo='nao ha celula livre perto do alvo estimado',
