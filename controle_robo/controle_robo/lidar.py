@@ -13,6 +13,7 @@ import math
 @dataclass
 class LeituraLidar:
     distancia_frontal: float = math.inf
+    distancia_frontal_coleta: float = math.inf
     distancia_frontal_sem_centro: float = math.inf
     distancia_esquerda: float = math.inf
     distancia_direita: float = math.inf
@@ -30,11 +31,13 @@ def processar_scan(
     msg,
     limite_frontal: float,
     limite_central_ignorado: float,
+    limite_central_coleta: float,
     distancia_obstaculo: float,
 ):
     """Separa o scan em regioes usadas pelo controle reativo."""
 
     distancias_frente = []
+    distancias_frente_coleta = []
     distancias_frente_sem_centro = []
     distancias_frente_esquerda = []
     distancias_frente_direita = []
@@ -54,6 +57,8 @@ def processar_scan(
 
         if abs(angulo) <= limite_frontal:
             distancias_frente.append(distancia)
+            if abs(angulo) <= limite_central_coleta:
+                distancias_frente_coleta.append(distancia)
             if abs(angulo) >= limite_central_ignorado:
                 distancias_frente_sem_centro.append(distancia)
                 if angulo > 0.0:
@@ -67,6 +72,10 @@ def processar_scan(
 
     leitura = LeituraLidar(
         distancia_frontal=min(distancias_frente, default=math.inf),
+        distancia_frontal_coleta=min(
+            distancias_frente_coleta,
+            default=math.inf,
+        ),
         distancia_frontal_sem_centro=min(
             distancias_frente_sem_centro,
             default=math.inf,

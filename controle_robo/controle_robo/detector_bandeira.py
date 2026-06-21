@@ -10,10 +10,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray
 
-from controle_robo.visao_bandeira import (
-    calcular_centro_x_haste,
-    calcular_ocupacao_label_central,
-)
+from controle_robo.visao_bandeira import calcular_centro_x_haste
 
 
 class DetectorBandeira(Node):
@@ -39,14 +36,12 @@ class DetectorBandeira(Node):
         'altura_imagem',
         'centro_x_haste',
         'erro_x_haste',
-        'obstaculo_central_relativo',
     )
 
     def __init__(self):
         super().__init__('detector_bandeira')
 
         self.declare_parameter('label_bandeira_azul', 25)
-        self.declare_parameter('label_obstaculo', 30)
         self.declare_parameter('area_minima_bandeira', 5.0)
         self.declare_parameter('tolerancia_cor_bandeira', 0.0)
         self.declare_parameter('debug_detector', False)
@@ -55,9 +50,6 @@ class DetectorBandeira(Node):
 
         self.label_bandeira_azul = int(
             self.get_parameter('label_bandeira_azul').value
-        )
-        self.label_obstaculo = int(
-            self.get_parameter('label_obstaculo').value
         )
         self.area_minima_bandeira = float(
             self.get_parameter('area_minima_bandeira').value
@@ -120,9 +112,6 @@ class DetectorBandeira(Node):
 
         altura, largura = frame.shape[:2]
         mask, origem_segmentacao = self.criar_mascara_bandeira(frame, msg.encoding)
-        obstaculo_central_relativo = self.calcular_obstaculo_central_relativo(
-            frame
-        )
         pixels_mascara = int(cv2.countNonZero(mask))
 
         contornos, _ = cv2.findContours(
@@ -164,7 +153,6 @@ class DetectorBandeira(Node):
             self.publicar_sem_deteccao(
                 largura=largura,
                 altura=altura,
-                obstaculo_central_relativo=obstaculo_central_relativo,
             )
             # Mensagem util quando a deteccao falha, mas barulhenta durante a
             # exploracao normal. Ative debug_detector no YAML para ve-la.
@@ -177,8 +165,7 @@ class DetectorBandeira(Node):
                         f'pixels_label={pixels_mascara}, '
                         f'contornos={len(contornos)}, '
                         f'maior_area={maior_area:.1f}, '
-                        f'area_min={self.area_minima_bandeira:.1f}, '
-                        f'obst_img={obstaculo_central_relativo:.3f}'
+                        f'area_min={self.area_minima_bandeira:.1f}'
                     ),
                     periodo=3.0,
                 )
@@ -220,7 +207,6 @@ class DetectorBandeira(Node):
             altura_imagem=altura,
             centro_x_haste=centro_x_haste,
             erro_x_haste=erro_x_haste,
-            obstaculo_central_relativo=obstaculo_central_relativo,
         )
 
         self.log_periodico(
@@ -231,8 +217,7 @@ class DetectorBandeira(Node):
                 f'cx={centro_x:.0f}/{largura}, erro={erro_x:+.2f}, '
                 f'haste_x={centro_x_haste:.0f}, '
                 f'erro_haste={erro_x_haste:+.2f}, '
-                f'area={area:.0f}px/{area_relativa:.3f}, '
-                f'obst_img={obstaculo_central_relativo:.3f}'
+                f'area={area:.0f}px/{area_relativa:.3f}'
             ),
             periodo=1.0,
         )
@@ -240,15 +225,6 @@ class DetectorBandeira(Node):
     @staticmethod
     def calcular_centro_x_haste(mask, x, y, w, h, centro_x_fallback):
         return calcular_centro_x_haste(mask, x, y, w, h, centro_x_fallback)
-
-    def calcular_obstaculo_central_relativo(self, frame):
-        """Mede obstaculos na faixa central da imagem semantica."""
-
-        if not self.imagem_tem_labels_numericos(frame):
-            return 0.0
-
-        labels = self.extrair_canal_de_labels(frame)
-        return calcular_ocupacao_label_central(labels, self.label_obstaculo)
 
     def criar_mascara_bandeira(self, frame, encoding: str):
         if self.imagem_tem_labels_numericos(frame):
@@ -365,9 +341,8 @@ class DetectorBandeira(Node):
         self,
         largura: int,
         altura: int,
-        obstaculo_central_relativo: float,
     ):
-        """Publica a semantica central mesmo quando a bandeira nao aparece."""
+        """Mantem o topico ativo mesmo quando a bandeira nao aparece."""
 
         msg = Float32MultiArray()
         msg.layout.dim.clear()
@@ -386,7 +361,6 @@ class DetectorBandeira(Node):
             float(altura),
             float(centro_x),
             0.0,
-            float(obstaculo_central_relativo),
         ]
         self.publisher.publish(msg)
 
@@ -403,7 +377,6 @@ class DetectorBandeira(Node):
         altura_imagem: int,
         centro_x_haste: float,
         erro_x_haste: float,
-        obstaculo_central_relativo: float,
     ):
         msg = Float32MultiArray()
         msg.layout.dim.clear()
@@ -420,7 +393,6 @@ class DetectorBandeira(Node):
             float(altura_imagem),
             float(centro_x_haste),
             float(erro_x_haste),
-            float(obstaculo_central_relativo),
         ]
         self.publisher.publish(msg)
 

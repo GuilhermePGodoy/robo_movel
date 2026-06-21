@@ -35,16 +35,6 @@ def bandeira_inteira_no_frame(det, margem_borda_px, area_minima_relativa):
         return False
     if det.area_relativa < area_minima_relativa:
         return False
-    if det.altura <= 0:
-        return False
-
-    # O label 25 vem do modelo inteiro da bandeira. Quando so aparece uma
-    # fresta ou apenas o poste, a bbox costuma ficar alta e estreita demais;
-    # isso nao serve como "bandeira inteira" para iniciar coleta.
-    proporcao_largura_altura = det.largura / float(det.altura)
-    if proporcao_largura_altura < 0.12:
-        return False
-
     margem = max(0.0, float(margem_borda_px))
     esquerda = det.centro_x - det.largura / 2.0
     direita = det.centro_x + det.largura / 2.0

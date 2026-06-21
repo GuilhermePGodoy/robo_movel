@@ -66,6 +66,12 @@ PARAMETROS_CONTROLE = [
         float,
     ),
     Argumento(
+        'angulo_lidar_coleta_graus',
+        '5.0',
+        'Janela central estreita usada para decidir quando fechar a garra',
+        float,
+    ),
+    Argumento(
         'distancia_lateral_desvio',
         '0.1',
         'Folga lateral minima para encerrar uma manobra de desvio',
@@ -132,21 +138,27 @@ PARAMETROS_CONTROLE = [
         float,
     ),
     Argumento(
+        'area_coleta_bandeira',
+        '0.07',
+        'Area relativa minima para permitir fechar a garra',
+        float,
+    ),
+    Argumento(
         'distancia_coleta_bandeira',
         '0.45',
         'Distancia frontal para fechar a garra quando a haste esta alinhada',
         float,
     ),
     Argumento(
-        'limite_obstaculo_semantico_posicionamento',
-        '0.02',
-        'Maximo de obstaculo na faixa central da imagem antes da coleta',
-        float,
-    ),
-    Argumento(
         'tempo_perda_bandeira',
         '1.0',
         'Tempo sem deteccao antes de considerar a bandeira perdida',
+        float,
+    ),
+    Argumento(
+        'tempo_redeteccao_bandeira',
+        '4.0',
+        'Tempo girando parado para reencontrar a bandeira apos desvio',
         float,
     ),
     Argumento(
@@ -264,6 +276,12 @@ PARAMETROS_CONTROLE = [
         int,
     ),
     Argumento(
+        'custo_adjacente_obstaculo',
+        '2.0',
+        'Custo extra para celulas livres encostadas na regiao bloqueada',
+        float,
+    ),
+    Argumento(
         'tolerancia_waypoint',
         '0.25',
         'Distancia para considerar um waypoint alcancado',
@@ -330,12 +348,6 @@ PARAMETROS_DETECTOR = [
         'label_bandeira_azul',
         '25',
         'Label semantica da bandeira azul no labels_map',
-        int,
-    ),
-    Argumento(
-        'label_obstaculo',
-        '30',
-        'Label semantica dos obstaculos no labels_map',
         int,
     ),
     Argumento(

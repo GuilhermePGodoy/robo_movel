@@ -11,6 +11,7 @@ class EstadoMissao(Enum):
     DESVIANDO_OBSTACULO = 'DESVIANDO_OBSTACULO'
     REPLANEJANDO_CAMINHO = 'REPLANEJANDO_CAMINHO'
     FALHA_PLANEJAMENTO = 'FALHA_PLANEJAMENTO'
+    REENCONTRANDO_BANDEIRA = 'REENCONTRANDO_BANDEIRA'
     POSICIONANDO_PARA_COLETA = 'POSICIONANDO_PARA_COLETA'
     CAPTURANDO_BANDEIRA = 'CAPTURANDO_BANDEIRA'
     PLANEJANDO_RETORNO_BASE = 'PLANEJANDO_RETORNO_BASE'
@@ -29,7 +30,6 @@ class DeteccaoBandeira:
     erro_x: float = 0.0
     centro_x_haste: float = 0.0
     erro_x_haste: float = 0.0
-    obstaculo_central_relativo: float = 0.0
     area: float = 0.0
     area_relativa: float = 0.0
     largura: int = 0

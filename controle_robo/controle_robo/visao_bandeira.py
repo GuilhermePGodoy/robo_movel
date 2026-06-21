@@ -40,19 +40,3 @@ def calcular_centro_x_haste(mask, x, y, w, h, centro_x_fallback):
         return x + centro_local
 
     return centro_x_fallback
-
-
-def calcular_ocupacao_label_central(labels, label_obstaculo):
-    """Calcula quanto da faixa central da imagem contem obstaculo."""
-
-    altura, largura = labels.shape[:2]
-    x0 = int(largura * 0.25)
-    x1 = int(largura * 0.75)
-    y0 = int(altura * 0.35)
-    y1 = int(altura * 0.95)
-    recorte = labels[y0:y1, x0:x1]
-    if recorte.size == 0:
-        return 0.0
-
-    pixels_obstaculo = int(np.count_nonzero(recorte == label_obstaculo))
-    return pixels_obstaculo / float(recorte.size)

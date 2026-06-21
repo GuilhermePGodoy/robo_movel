@@ -36,6 +36,7 @@ class MaquinaEstadosMissao:
         self.fase_desvio = 'girando'
         self.instante_inicio_avanco_desvio = None
         self.direcao_desvio_atual = 1.0
+        self.direcao_redeteccao_bandeira = 1.0
         self.confirmador_bandeira_inteira = ConfirmadorBandeiraInteira()
 
         # Tabela simples de despacho: cada estado aponta para o metodo que
@@ -55,6 +56,9 @@ class MaquinaEstadosMissao:
             EstadoMissao.DESVIANDO_OBSTACULO: self.estado_desviando_obstaculo,
             EstadoMissao.REPLANEJANDO_CAMINHO: self.estado_replanejando_caminho,
             EstadoMissao.FALHA_PLANEJAMENTO: self.estado_falha_planejamento,
+            EstadoMissao.REENCONTRANDO_BANDEIRA: (
+                self.estado_reencontrando_bandeira
+            ),
             EstadoMissao.POSICIONANDO_PARA_COLETA: (
                 self.estado_posicionando_para_coleta
             ),
@@ -77,6 +81,7 @@ class MaquinaEstadosMissao:
             return
 
         self.atualizar_confirmacao_bandeira_inteira()
+        self.atualizar_memoria_direcao_bandeira()
 
         if self.deve_desviar_por_obstaculo_lateral():
             self.trocar_estado(
@@ -146,8 +151,7 @@ class MaquinaEstadosMissao:
                 'visao=bandeira | '
                 f'area={det.area_relativa:.3f}, '
                 f'erro_blob={det.erro_x:+.2f}, '
-                f'erro_haste={det.erro_x_haste:+.2f}, '
-                f'obst_img={det.obstaculo_central_relativo:.3f}'
+                f'erro_haste={det.erro_x_haste:+.2f}'
             ),
             periodo=0.5,
         )
@@ -267,25 +271,26 @@ class MaquinaEstadosMissao:
     def estado_seguindo_caminho_para_bandeira(self):
         robo = self.robo
 
+        if self.bandeira_pronta_para_posicionamento():
+            robo.limpar_caminho()
+            self.trocar_estado(
+                EstadoMissao.POSICIONANDO_PARA_COLETA,
+                (
+                    'bandeira grande o bastante na camera; '
+                    'abandonando A* e usando aproximacao visual'
+                ),
+            )
+            return
+
         if self.bandeira_inteira_visivel():
             robo.atualizar_estimativa_bandeira()
-            if (
-                not self.bandeira_pronta_para_posicionamento()
-                and robo.alvo_bandeira_mudou_para_replanejar()
-            ):
+            if robo.alvo_bandeira_mudou_para_replanejar():
                 self.trocar_estado(
                     EstadoMissao.REPLANEJANDO_CAMINHO,
                     'bandeira inteira vista durante A*; atualizando alvo',
                 )
                 return
 
-        if self.bandeira_pronta_para_posicionamento():
-            robo.limpar_caminho()
-            self.trocar_estado(
-                EstadoMissao.POSICIONANDO_PARA_COLETA,
-                'bandeira grande e alinhada durante A*; usando aproximacao visual',
-            )
-            return
         if self.bandeira_parcial_visivel():
             det = robo.deteccao_bandeira
             self.log_estado_periodico(
@@ -293,7 +298,6 @@ class MaquinaEstadosMissao:
                     'visao=bandeira_parcial | aguardando_posicionamento | '
                     f'area={det.area_relativa:.3f}, '
                     f'min_pos={robo.area_posicionamento_bandeira:.3f}, '
-                    f'obst_central={robo.obstaculo_central_semantico:.3f}, '
                     f'erro_haste={det.erro_x_haste:+.2f}, '
                     f'box={det.largura}x{det.altura}'
                 ),
@@ -317,23 +321,6 @@ class MaquinaEstadosMissao:
                     EstadoMissao.POSICIONANDO_PARA_COLETA,
                     'robo chegou ao alvo do A* e tem boa visao da bandeira',
                 )
-            elif self.bandeira_util_para_alinhamento_visual():
-                robo.limpar_caminho()
-                self.trocar_estado(
-                    EstadoMissao.POSICIONANDO_PARA_COLETA,
-                    (
-                        'robo chegou ao alvo do A* vendo a bandeira grande '
-                        'e sem obstaculo central; alinhando pela haste'
-                    ),
-                )
-            elif not self.pouco_obstaculo_semantico_a_frente():
-                self.trocar_estado(
-                    EstadoMissao.DESVIANDO_OBSTACULO,
-                    (
-                        'chegou ao alvo do A*, mas a imagem semantica ainda '
-                        'mostra obstaculo central; fazendo desvio local'
-                    ),
-                )
             elif self.bandeira_recente():
                 robo.limpar_caminho()
                 self.trocar_estado(
@@ -355,10 +342,7 @@ class MaquinaEstadosMissao:
 
         if robo.waypoint_bloqueado():
             if robo.waypoint_bloqueado_eh_final():
-                if (
-                    robo.obstaculo_a_frente
-                    or not self.pouco_obstaculo_semantico_a_frente()
-                ):
+                if robo.obstaculo_a_frente:
                     self.trocar_estado(
                         EstadoMissao.DESVIANDO_OBSTACULO,
                         (
@@ -542,10 +526,7 @@ class MaquinaEstadosMissao:
             robo.tem_alvo_bandeira_congelado()
             and robo.chegou_perto_da_bandeira_planejada()
         ):
-            if (
-                robo.obstaculo_a_frente
-                or not self.pouco_obstaculo_semantico_a_frente()
-            ):
+            if robo.obstaculo_a_frente:
                 self.trocar_estado(
                     EstadoMissao.DESVIANDO_OBSTACULO,
                     (
@@ -596,13 +577,75 @@ class MaquinaEstadosMissao:
                 'sem caminho e sem bandeira visivel; voltando a explorar',
             )
 
+    def estado_reencontrando_bandeira(self):
+        robo = self.robo
+        tempo_no_estado = time.monotonic() - self.instante_inicio_estado
+
+        if (
+            self.bandeira_pronta_para_posicionamento()
+            or self.bandeira_centralizada_para_posicionamento()
+        ):
+            robo.limpar_caminho()
+            self.trocar_estado(
+                EstadoMissao.POSICIONANDO_PARA_COLETA,
+                'bandeira reenquadrada; retomando aproximacao fina',
+            )
+            return
+
+        if tempo_no_estado >= robo.tempo_redeteccao_bandeira:
+            if robo.tem_alvo_bandeira_congelado():
+                self.trocar_estado(
+                    EstadoMissao.REPLANEJANDO_CAMINHO,
+                    (
+                        'redeteccao visual esgotou tempo; '
+                        'voltando ao alvo estimado'
+                    ),
+                )
+            else:
+                self.trocar_estado(
+                    EstadoMissao.EXPLORANDO,
+                    (
+                        'redeteccao visual nao reencontrou a bandeira; '
+                        'retomando exploracao ampla'
+                    ),
+                )
+            return
+
+        if self.bandeira_parcial_visivel():
+            angular = self.controle_angular_para_bandeira()
+            if abs(angular) < 0.08:
+                angular = 0.4 * robo.velocidade_giro_busca * (
+                    self.direcao_redeteccao_bandeira
+                )
+            acao = 'reenquadrar pela haste'
+        else:
+            angular = (
+                robo.velocidade_giro_busca
+                * self.direcao_redeteccao_bandeira
+            )
+            acao = 'varrer ultimo lado visto'
+
+        robo.publicar_velocidade(0.0, angular)
+        self.log_estado_periodico(
+            (
+                f'acao={acao}; '
+                f'tempo={tempo_no_estado:.1f}/{robo.tempo_redeteccao_bandeira:.1f}s, '
+                f'direcao={"esquerda" if angular > 0.0 else "direita"}, '
+                f'{self.resumo_visao()}, cmd=(0.00, {angular:+.2f})'
+            ),
+            periodo=0.5,
+        )
+
     def estado_posicionando_para_coleta(self):
         robo = self.robo
 
         if not self.bandeira_util_para_posicionamento():
             self.trocar_estado(
-                EstadoMissao.EXPLORANDO,
-                'visao da bandeira ficou pequena demais; voltando a explorar',
+                EstadoMissao.REENCONTRANDO_BANDEIRA,
+                (
+                    'visao da bandeira ficou pequena demais; '
+                    'tentando reenquadrar antes de explorar'
+                ),
             )
             return
 
@@ -648,6 +691,8 @@ class MaquinaEstadosMissao:
                 f'erro_blob={det.erro_x:+.2f}, '
                 f'area={det.area_relativa:.3f}, '
                 f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
+                f'fr_coleta={robo.formatar_distancia(robo.distancia_frontal_coleta)}, '
+                f'area_coleta={robo.area_coleta_bandeira:.3f}, '
                 f'dist_coleta={robo.distancia_coleta_bandeira:.2f}m, '
                 f'fator_vel={fator_obstaculo:.2f}, '
                 f'cmd=({linear:.2f}, {angular:+.2f})'
@@ -825,6 +870,27 @@ class MaquinaEstadosMissao:
             self.robo.frames_bandeira_inteira
         )
 
+    def bandeira_centralizada_para_posicionamento(self):
+        det = self.robo.deteccao_bandeira
+        return (
+            self.bandeira_parcial_visivel()
+            and det.area_relativa >= self.robo.area_minima_bandeira_inteira
+            and abs(self.erro_x_haste())
+            <= self.robo.erro_alinhamento_bandeira * 1.5
+        )
+
+    def atualizar_memoria_direcao_bandeira(self):
+        if not self.bandeira_parcial_visivel():
+            return
+
+        erro = self.erro_x_haste()
+        if abs(erro) <= 0.05:
+            return
+
+        # Erro negativo significa haste a esquerda da imagem. Para reencontrar,
+        # o robo deve girar para a esquerda; em ROS isso e angular.z positivo.
+        self.direcao_redeteccao_bandeira = -1.0 if erro > 0.0 else 1.0
+
     def tempo_desde_bandeira(self):
         if self.robo.ultimo_instante_bandeira is None:
             return math.inf
@@ -834,6 +900,7 @@ class MaquinaEstadosMissao:
     def deve_desviar_por_obstaculo_lateral(self):
         if self.estado_atual in (
             EstadoMissao.DESVIANDO_OBSTACULO,
+            EstadoMissao.REENCONTRANDO_BANDEIRA,
             EstadoMissao.CAPTURANDO_BANDEIRA,
             EstadoMissao.ENTREGANDO_BANDEIRA,
             EstadoMissao.MISSAO_CONCLUIDA,
@@ -906,17 +973,26 @@ class MaquinaEstadosMissao:
     def sair_do_desvio(self, distancia_lateral):
         robo = self.robo
 
-        if (
-            self.estado_retorno_desvio == EstadoMissao.POSICIONANDO_PARA_COLETA
-            and self.bandeira_pronta_para_posicionamento()
-        ):
-            self.trocar_estado(
-                EstadoMissao.POSICIONANDO_PARA_COLETA,
-                (
-                    'obstaculo contornado e bandeira ainda visivel; '
-                    'retomando aproximacao fina'
-                ),
-            )
+        if self.estado_retorno_desvio == EstadoMissao.POSICIONANDO_PARA_COLETA:
+            if (
+                self.bandeira_pronta_para_posicionamento()
+                or self.bandeira_centralizada_para_posicionamento()
+            ):
+                self.trocar_estado(
+                    EstadoMissao.POSICIONANDO_PARA_COLETA,
+                    (
+                        'obstaculo contornado e bandeira reenquadrada; '
+                        'retomando aproximacao fina'
+                    ),
+                )
+            else:
+                self.trocar_estado(
+                    EstadoMissao.REENCONTRANDO_BANDEIRA,
+                    (
+                        'obstaculo contornado perto da coleta; '
+                        'reenquadrando bandeira antes de decidir rota'
+                    ),
+                )
         elif (
             self.estado_retorno_desvio
             == EstadoMissao.SEGUINDO_CAMINHO_PARA_BANDEIRA
@@ -976,50 +1052,24 @@ class MaquinaEstadosMissao:
             )
 
     def bandeira_pronta_para_posicionamento(self):
-        if not self.bandeira_util_para_alinhamento_visual():
-            return False
+        """Diz quando a camera ja deve assumir o ajuste final.
 
-        robo = self.robo
-        centralizada = (
-            abs(self.erro_x_haste()) <= robo.erro_alinhamento_bandeira * 1.5
-        )
-        return centralizada
+        Perto da bandeira, pequenas mudancas na estimativa podem fazer o A*
+        escolher um caminho ruim. Por isso usamos um criterio bem direto:
+        quando a bandeira ocupa area suficiente na imagem, o planejamento
+        global para e o controle visual passa a mirar a haste.
+        """
 
-    def bandeira_util_para_alinhamento_visual(self):
-        """Diz se ja vale abandonar o A* e centralizar pela camera."""
-
-        return (
-            self.bandeira_util_para_posicionamento()
-            and self.pouco_obstaculo_semantico_a_frente()
-        )
-
-    def pouco_obstaculo_semantico_a_frente(self):
-        robo = self.robo
-        pouco_obstaculo = (
-            robo.obstaculo_central_semantico
-            <= robo.limite_obstaculo_semantico_posicionamento
-        )
-        if not pouco_obstaculo:
-            robo.log_periodico(
-                'obstaculo_semantico_posicionamento',
-                (
-                    'VISAO | obstaculo_central=sim | '
-                    f'obst_central={robo.obstaculo_central_semantico:.3f}, '
-                    f'limite={robo.limite_obstaculo_semantico_posicionamento:.3f} | '
-                    'acao=adiar_posicionamento'
-                ),
-                periodo=0.8,
-            )
-        return pouco_obstaculo
+        return self.bandeira_util_para_posicionamento()
 
     def bandeira_pronta_para_coleta(self):
         robo = self.robo
         det = robo.deteccao_bandeira
         centralizada = abs(self.erro_x_haste()) <= robo.erro_alinhamento_bandeira
-        visual_minimo = det.area_relativa >= robo.area_minima_bandeira_inteira
+        visual_minimo = det.area_relativa >= robo.area_coleta_bandeira
         proxima_por_lidar = (
-            math.isfinite(robo.distancia_frontal)
-            and robo.distancia_frontal <= robo.distancia_coleta_bandeira
+            math.isfinite(robo.distancia_frontal_coleta)
+            and robo.distancia_frontal_coleta <= robo.distancia_coleta_bandeira
         )
         return (
             self.bandeira_parcial_visivel()
@@ -1032,26 +1082,48 @@ class MaquinaEstadosMissao:
         robo = self.robo
         det = robo.deteccao_bandeira
 
-        # No ajuste fino, se a haste esta alinhada com o centro da camera,
-        # a leitura frontal do LIDAR deve ser a propria haste. Nesse caso ela
-        # nao deve disparar desvio: ela e justamente o alvo da garra.
-        alvo_de_coleta_provavel = (
-            self.bandeira_parcial_visivel()
-            and abs(self.erro_x_haste()) <= robo.erro_alinhamento_bandeira
-            and det.area_relativa >= robo.area_minima_bandeira_inteira
-        )
-        if alvo_de_coleta_provavel:
+        if self.bandeira_pronta_para_coleta():
             robo.log_periodico(
                 'posicionamento_lidar_alvo',
                 (
-                    'LIDAR | frente_ocupada_pelo_alvo=provavel | '
+                    'LIDAR | frente_ocupada_pelo_alvo=confirmado | '
                     f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
+                    f'fr_coleta={robo.formatar_distancia(robo.distancia_frontal_coleta)}, '
                     f'area={det.area_relativa:.3f}, '
+                    f'area_coleta={robo.area_coleta_bandeira:.3f}, '
                     f'erro_haste={det.erro_x_haste:+.2f}, '
                     f'dist_coleta={robo.distancia_coleta_bandeira:.2f}m | '
-                    'acao=manter_aproximacao'
+                    'acao=permitir_captura'
                 ),
                 periodo=1.0,
+            )
+            return False
+
+        # Se a haste esta centralizada, a bandeira ja esta grande na imagem e
+        # o LIDAR so acusa algo na faixa central estreita, o "obstaculo" mais
+        # provavel e a propria haste. Nesse caso seguimos aproximando; se
+        # tambem houver obstaculo fora do centro, ai sim desviamos.
+        alvo_central_em_aproximacao = (
+            self.bandeira_parcial_visivel()
+            and abs(self.erro_x_haste()) <= robo.erro_alinhamento_bandeira
+            and det.area_relativa >= robo.area_coleta_bandeira
+            and math.isfinite(robo.distancia_frontal_coleta)
+            and not robo.obstaculo_a_frente_sem_centro
+        )
+        if alvo_central_em_aproximacao:
+            robo.log_periodico(
+                'posicionamento_lidar_alvo',
+                (
+                    'LIDAR | frente_ocupada_pela_haste=provavel | '
+                    f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
+                    f'fr_coleta={robo.formatar_distancia(robo.distancia_frontal_coleta)}, '
+                    f'fr_sem_centro={robo.formatar_distancia(robo.distancia_frontal_sem_centro)}, '
+                    f'area={det.area_relativa:.3f}, '
+                    f'area_coleta={robo.area_coleta_bandeira:.3f}, '
+                    f'erro_haste={det.erro_x_haste:+.2f} | '
+                    'acao=continuar_aproximando'
+                ),
+                periodo=0.8,
             )
             return False
 
@@ -1161,14 +1233,8 @@ class MaquinaEstadosMissao:
                 'visao('
                 'bandeira=sim, '
                 f'area={det.area_relativa:.3f}, '
-                f'erro_haste={det.erro_x_haste:+.2f}, '
-                f'obst_img={robo.obstaculo_central_semantico:.3f}'
+                f'erro_haste={det.erro_x_haste:+.2f}'
                 ')'
             )
 
-        return (
-            'visao('
-            'bandeira=nao, '
-            f'obst_img={robo.obstaculo_central_semantico:.3f}'
-            ')'
-        )
+        return 'visao(bandeira=nao)'

@@ -59,11 +59,16 @@ class PlanejadorGrade:
         self,
         custo_desconhecido: float = 3.0,
         inflacao_obstaculo_celulas: int = 1,
+        custo_adjacente_obstaculo: float = 2.0,
     ):
         self.custo_desconhecido = max(1.0, float(custo_desconhecido))
         self.inflacao_obstaculo_celulas = max(
             0,
             int(inflacao_obstaculo_celulas),
+        )
+        self.custo_adjacente_obstaculo = max(
+            1.0,
+            float(custo_adjacente_obstaculo),
         )
 
     def planejar(self, mapa_msg, inicio_xy, alvo_xy):
@@ -83,6 +88,10 @@ class PlanejadorGrade:
         bloqueadas = self.criar_mascara_bloqueada(mapa)
         bloqueadas_para_destino = set(bloqueadas)
         self.liberar_vizinhanca_do_robo(bloqueadas, inicio)
+        adjacentes_obstaculo = self.criar_mascara_adjacente_obstaculo(
+            mapa,
+            bloqueadas,
+        )
 
         destino = self.celula_livre_mais_proxima(
             mapa,
@@ -100,6 +109,7 @@ class PlanejadorGrade:
             inicio,
             destino,
             bloqueadas,
+            adjacentes_obstaculo,
         )
         if not caminho:
             return ResultadoPlanejamento(
@@ -134,6 +144,31 @@ class PlanejadorGrade:
                         bloqueadas.add(vizinha)
 
         return bloqueadas
+
+    def criar_mascara_adjacente_obstaculo(self, mapa: MapaGrade, bloqueadas):
+        """Marca celulas livres logo ao lado da regiao bloqueada.
+
+        A inflacao continua sendo a margem dura: celulas infladas sao
+        proibidas. Esta mascara e uma margem suave, usada como custo maior
+        para o A* preferir caminhos com mais folga quando existir alternativa.
+        """
+
+        adjacentes = set()
+        for celula in bloqueadas:
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dx == 0 and dy == 0:
+                        continue
+
+                    vizinha = Celula(celula.x + dx, celula.y + dy)
+                    if not mapa.celula_valida(vizinha):
+                        continue
+                    if vizinha in bloqueadas:
+                        continue
+
+                    adjacentes.add(vizinha)
+
+        return adjacentes
 
     def liberar_vizinhanca_do_robo(self, bloqueadas, inicio):
         # O mapper pinta a posicao atual do robo como 100 para visualizacao.
@@ -171,7 +206,14 @@ class PlanejadorGrade:
 
         return None
 
-    def executar_a_estrela(self, mapa, inicio, destino, bloqueadas):
+    def executar_a_estrela(
+        self,
+        mapa,
+        inicio,
+        destino,
+        bloqueadas,
+        adjacentes_obstaculo,
+    ):
         fronteira = []
         contador = 0
         heapq.heappush(fronteira, (0.0, contador, inicio))
@@ -192,7 +234,11 @@ class PlanejadorGrade:
                 novo_custo = (
                     custo_ate[atual]
                     + custo_movimento
-                    * self.custo_da_celula(mapa, vizinha)
+                    * self.custo_da_celula(
+                        mapa,
+                        vizinha,
+                        adjacentes_obstaculo,
+                    )
                 )
                 if novo_custo >= custo_ate.get(vizinha, math.inf):
                     continue
@@ -218,11 +264,16 @@ class PlanejadorGrade:
                 custo = math.sqrt(2.0) if dx and dy else 1.0
                 yield vizinha, custo
 
-    def custo_da_celula(self, mapa, celula):
+    def custo_da_celula(self, mapa, celula, adjacentes_obstaculo=None):
         valor = mapa.valor(celula)
+        custo = 1.0
         if valor == -1:
-            return self.custo_desconhecido
-        return 1.0
+            custo = self.custo_desconhecido
+
+        if adjacentes_obstaculo and celula in adjacentes_obstaculo:
+            custo += self.custo_adjacente_obstaculo - 1.0
+
+        return custo
 
     @staticmethod
     def heuristica(a, b):

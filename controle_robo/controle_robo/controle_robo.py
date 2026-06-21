@@ -35,11 +35,10 @@ class ControleRobo(Node):
         # consulta os valores mais recentes e decide o proximo comando.
         self.deteccao_bandeira = DeteccaoBandeira()
         self.ultimo_instante_bandeira = None
-        self.obstaculo_central_semantico = 0.0
-        self.ultimo_instante_semantico = None
 
         self.obstaculo_a_frente = False
         self.distancia_frontal = math.inf
+        self.distancia_frontal_coleta = math.inf
         self.distancia_frontal_sem_centro = math.inf
         self.obstaculo_a_frente_sem_centro = False
         self.distancia_esquerda = math.inf
@@ -74,6 +73,7 @@ class ControleRobo(Node):
         self.planejador_grade = PlanejadorGrade(
             self.custo_desconhecido,
             self.inflacao_obstaculo_celulas,
+            self.custo_adjacente_obstaculo,
         )
 
         self.qos_visualizacao = QoSProfile(
@@ -133,6 +133,7 @@ class ControleRobo(Node):
         self.declare_parameter('distancia_obstaculo', 0.6)
         self.declare_parameter('angulo_frontal_graus', 30.0)
         self.declare_parameter('angulo_ignorar_lidar_garra_graus', 8.0)
+        self.declare_parameter('angulo_lidar_coleta_graus', 5.0)
         self.declare_parameter('distancia_lateral_desvio', 0.1)
         self.declare_parameter('velocidade_exploracao', 0.4)
         self.declare_parameter('velocidade_posicionamento', 0.08)
@@ -144,9 +145,10 @@ class ControleRobo(Node):
         self.declare_parameter('ganho_angular_bandeira', 0.9)
         self.declare_parameter('erro_alinhamento_bandeira', 0.12)
         self.declare_parameter('area_posicionamento_bandeira', 0.035)
+        self.declare_parameter('area_coleta_bandeira', 0.07)
         self.declare_parameter('distancia_coleta_bandeira', 0.45)
-        self.declare_parameter('limite_obstaculo_semantico_posicionamento', 0.02)
         self.declare_parameter('tempo_perda_bandeira', 1.0)
+        self.declare_parameter('tempo_redeteccao_bandeira', 4.0)
         self.declare_parameter('tempo_minimo_desvio', 0.8)
         self.declare_parameter('habilitar_garra', True)
         self.declare_parameter('garra_extensao_aberta', 0.0)
@@ -166,6 +168,7 @@ class ControleRobo(Node):
         self.declare_parameter('historico_estimativas_bandeira', 5)
         self.declare_parameter('custo_desconhecido', 3.0)
         self.declare_parameter('inflacao_obstaculo_celulas', 1)
+        self.declare_parameter('custo_adjacente_obstaculo', 2.0)
         self.declare_parameter('tolerancia_waypoint', 0.25)
         self.declare_parameter('tolerancia_alvo_planejado', 0.6)
         self.declare_parameter('ganho_angular_waypoint', 1.0)
@@ -193,6 +196,13 @@ class ControleRobo(Node):
         self.limite_central_garra = min(
             self.limite_frontal,
             math.radians(self.angulo_ignorar_lidar_garra_graus),
+        )
+        self.angulo_lidar_coleta_graus = abs(float(
+            self.get_parameter('angulo_lidar_coleta_graus').value
+        ))
+        self.limite_central_coleta = min(
+            self.limite_frontal,
+            math.radians(self.angulo_lidar_coleta_graus),
         )
         self.distancia_lateral_desvio = float(
             self.get_parameter('distancia_lateral_desvio').value
@@ -231,16 +241,17 @@ class ControleRobo(Node):
         self.area_posicionamento_bandeira = float(
             self.get_parameter('area_posicionamento_bandeira').value
         )
+        self.area_coleta_bandeira = float(
+            self.get_parameter('area_coleta_bandeira').value
+        )
         self.distancia_coleta_bandeira = float(
             self.get_parameter('distancia_coleta_bandeira').value
         )
-        self.limite_obstaculo_semantico_posicionamento = float(
-            self.get_parameter(
-                'limite_obstaculo_semantico_posicionamento'
-            ).value
-        )
         self.tempo_perda_bandeira = float(
             self.get_parameter('tempo_perda_bandeira').value
+        )
+        self.tempo_redeteccao_bandeira = float(
+            self.get_parameter('tempo_redeteccao_bandeira').value
         )
         self.tempo_minimo_desvio = float(
             self.get_parameter('tempo_minimo_desvio').value
@@ -293,6 +304,9 @@ class ControleRobo(Node):
         self.inflacao_obstaculo_celulas = int(
             self.get_parameter('inflacao_obstaculo_celulas').value
         )
+        self.custo_adjacente_obstaculo = float(
+            self.get_parameter('custo_adjacente_obstaculo').value
+        )
         self.tolerancia_waypoint = float(
             self.get_parameter('tolerancia_waypoint').value
         )
@@ -334,10 +348,12 @@ class ControleRobo(Node):
             msg,
             self.limite_frontal,
             self.limite_central_garra,
+            self.limite_central_coleta,
             self.distancia_obstaculo,
         )
 
         self.distancia_frontal = leitura.distancia_frontal
+        self.distancia_frontal_coleta = leitura.distancia_frontal_coleta
         self.distancia_frontal_sem_centro = leitura.distancia_frontal_sem_centro
         self.distancia_esquerda = leitura.distancia_esquerda
         self.distancia_direita = leitura.distancia_direita
@@ -355,6 +371,7 @@ class ControleRobo(Node):
                 (
                     'LIDAR | obstaculo=sim | '
                     f'fr={self.formatar_distancia(self.distancia_frontal)}, '
+                    f'fr_coleta={self.formatar_distancia(self.distancia_frontal_coleta)}, '
                     f'fr_sem_centro={self.formatar_distancia(self.distancia_frontal_sem_centro)}, '
                     f'esq={self.formatar_distancia(self.distancia_esquerda)}, '
                     f'dir={self.formatar_distancia(self.distancia_direita)}, '
@@ -415,14 +432,6 @@ class ControleRobo(Node):
             )
             return
 
-        obstaculo_central_relativo = (
-            float(msg.data[12])
-            if len(msg.data) > 12
-            else 0.0
-        )
-        self.obstaculo_central_semantico = obstaculo_central_relativo
-        self.ultimo_instante_semantico = time.monotonic()
-
         centro_x_haste = (
             float(msg.data[10])
             if len(msg.data) > 10
@@ -438,21 +447,12 @@ class ControleRobo(Node):
             # Log ausente em todo frame polui bastante o terminal durante busca
             # e retorno. Para investigar a camera sem bandeira, use
             # debug_detector:=true no YAML/launch.
-            # self.log_periodico(
-            #     'deteccao_bandeira_ausente',
-            #     (
-            #         'VISAO | bandeira=nao | '
-            #         f'obst_img={self.obstaculo_central_semantico:.3f}'
-            #     ),
-            #     periodo=2.0,
-            # )
             return
 
         self.deteccao_bandeira = DeteccaoBandeira(
             visivel=True,
             erro_x=float(msg.data[1]),
             erro_x_haste=erro_x_haste,
-            obstaculo_central_relativo=obstaculo_central_relativo,
             area_relativa=float(msg.data[2]),
             area=float(msg.data[3]),
             centro_x=float(msg.data[4]),
@@ -477,8 +477,7 @@ class ControleRobo(Node):
                 'VISAO | bandeira=sim | '
                 f'erro={self.deteccao_bandeira.erro_x:+.2f}, '
                 f'erro_haste={self.deteccao_bandeira.erro_x_haste:+.2f}, '
-                f'area={self.deteccao_bandeira.area_relativa:.3f}, '
-                f'obst_img={self.obstaculo_central_semantico:.3f}'
+                f'area={self.deteccao_bandeira.area_relativa:.3f}'
             ),
             periodo=1.0,
         )

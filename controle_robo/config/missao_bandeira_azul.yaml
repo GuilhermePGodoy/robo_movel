@@ -44,6 +44,9 @@ controle_robo:
     # Depois da captura, a bandeira aparece no centro do LIDAR; esta janela
     # central e ignorada somente durante o retorno para a base.
     angulo_ignorar_lidar_garra_graus: 8.0
+    # Janela central estreita usada para decidir se a haste esta perto da garra.
+    # Obstaculos no canto do cone frontal nao devem fechar a garra antes da hora.
+    angulo_lidar_coleta_graus: 5.0
     # Folga lateral minima para terminar uma manobra de desvio.
     distancia_lateral_desvio: 0.1
 
@@ -74,12 +77,16 @@ controle_robo:
     erro_alinhamento_bandeira: 0.12
     # Area relativa minima para abandonar o A* e entrar no ajuste visual.
     area_posicionamento_bandeira: 0.035
+    # Area relativa minima para fechar a garra. Deve ser maior que a area de
+    # posicionamento para evitar captura quando a bandeira ainda esta afastada.
+    area_coleta_bandeira: 0.07
     # Distancia frontal do LIDAR para fechar a garra com a haste alinhada.
     distancia_coleta_bandeira: 0.45
-    # Maximo de pixels de obstaculo na faixa central da imagem antes da coleta.
-    limite_obstaculo_semantico_posicionamento: 0.02
     # Tempo sem deteccao antes de tratar a bandeira como perdida.
     tempo_perda_bandeira: 1.0
+    # Depois de um desvio perto da coleta, gira parado por este tempo tentando
+    # reenquadrar a bandeira antes de voltar a planejar/explorar.
+    tempo_redeteccao_bandeira: 4.0
 
     # ----------------------------
     # Desvio e recuperacao de rota
@@ -122,6 +129,9 @@ controle_robo:
     custo_desconhecido: 3.0
     # Margem em celulas ao redor de obstaculos do mapa.
     inflacao_obstaculo_celulas: 1
+    # Peso extra para celulas livres logo ao lado da regiao bloqueada.
+    # Aumente para o A* preferir caminhos mais afastados de obstaculos.
+    custo_adjacente_obstaculo: 2.0
     # Distancia para considerar um waypoint ou alvo planejado alcancado.
     tolerancia_waypoint: 0.25
     tolerancia_alvo_planejado: 0.6
@@ -147,9 +157,8 @@ controle_robo:
     # ----------------------------
     # Detector semantico
     # ----------------------------
-    # Labels do labels_map: bandeira azul e obstaculos da arena.
+    # Label do labels_map que representa a bandeira azul.
     label_bandeira_azul: 25
-    label_obstaculo: 30
     # Area minima em pixels para aceitar um contorno da bandeira.
     area_minima_bandeira: 5.0
     # Tolerancia usada somente no fallback por colored_map.
