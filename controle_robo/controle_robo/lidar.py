@@ -36,6 +36,8 @@ def processar_scan(
 
     distancias_frente = []
     distancias_frente_sem_centro = []
+    distancias_frente_esquerda = []
+    distancias_frente_direita = []
     distancias_esquerda = []
     distancias_direita = []
 
@@ -54,6 +56,10 @@ def processar_scan(
             distancias_frente.append(distancia)
             if abs(angulo) >= limite_central_ignorado:
                 distancias_frente_sem_centro.append(distancia)
+                if angulo > 0.0:
+                    distancias_frente_esquerda.append(distancia)
+                elif angulo < 0.0:
+                    distancias_frente_direita.append(distancia)
         elif limite_frontal < angulo <= math.radians(90):
             distancias_esquerda.append(distancia)
         elif -math.radians(90) <= angulo < -limite_frontal:
@@ -69,13 +75,16 @@ def processar_scan(
         distancia_direita=min(distancias_direita, default=math.inf),
     )
 
-    metade_frente = len(distancias_frente) // 2
+    # Para escolher o lado do desvio, nao dividimos o vetor de ranges pela
+    # metade: a ordem do LaserScan depende de angle_min/angle_increment.
+    # O sinal do angulo e a referencia fisica correta no frame do robo:
+    # angulo positivo fica a esquerda, negativo fica a direita.
     leitura.distancia_esquerda_frente = min(
-        distancias_esquerda + distancias_frente[:metade_frente],
+        distancias_esquerda + distancias_frente_esquerda,
         default=math.inf,
     )
     leitura.distancia_direita_frente = min(
-        distancias_direita + distancias_frente[metade_frente:],
+        distancias_direita + distancias_frente_direita,
         default=math.inf,
     )
 

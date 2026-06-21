@@ -452,6 +452,8 @@ class MaquinaEstadosMissao:
                         f'frente={robo.formatar_distancia(distancia_frontal)}, '
                         f'esq={robo.formatar_distancia(robo.distancia_esquerda)}, '
                         f'dir={robo.formatar_distancia(robo.distancia_direita)}, '
+                        f'esq_fr={robo.formatar_distancia(robo.distancia_esquerda_frente)}, '
+                        f'dir_fr={robo.formatar_distancia(robo.distancia_direita_frente)}, '
                         f'cmd=({linear:.2f}, {angular:+.2f})'
                     ),
                     periodo=0.5,
@@ -482,6 +484,8 @@ class MaquinaEstadosMissao:
                 f'frente={robo.formatar_distancia(distancia_frontal)}, '
                 f'esq={robo.formatar_distancia(robo.distancia_esquerda)}, '
                 f'dir={robo.formatar_distancia(robo.distancia_direita)}, '
+                f'esq_fr={robo.formatar_distancia(robo.distancia_esquerda_frente)}, '
+                f'dir_fr={robo.formatar_distancia(robo.distancia_direita_frente)}, '
                 f'lateral_min={robo.formatar_distancia(distancia_lateral)}, '
                 f'lateral_minima={robo.distancia_lateral_desvio:.2f}m, '
                 f'cmd=(0.00, {angular:+.2f})'
