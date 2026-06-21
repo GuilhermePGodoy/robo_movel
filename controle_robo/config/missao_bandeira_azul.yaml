@@ -1,15 +1,24 @@
 # Configuracao padrao da missao da bandeira azul.
-# Use este arquivo com:
+#
+# Uso comum:
+# ros2 launch controle_robo missao_bandeira_azul.launch.py
+#
+# Para testar outro arquivo:
 # ros2 launch controle_robo missao_bandeira_azul.launch.py config_file:=<caminho>
 
 launch:
-  world: empty_arena.sdf # arena_cilindros.sdf empty_arena.sdf arena_paredes.sdf
+  # Mundo carregado pelo pacote robo_movel.
+  # Opcoes usuais: arena_cilindros.sdf, empty_arena.sdf, arena_paredes.sdf.
+  world: empty_arena.sdf
+
+  # Todos os nos usam o relogio da simulacao.
   use_sim_time: true
 
-  # Pequenos atrasos para dar tempo do Gazebo, spawn e controladores subirem.
+  # Atrasos para Gazebo, spawn e controllers iniciarem em ordem.
   atraso_carrega_robo: 1.0
   atraso_controle: 10.0
 
+  # Topicos usados pelos launchers para remapear os nos da missao.
   topico_cmd_vel: /diff_drive_base_controller/cmd_vel
   topico_scan: /scan
   topico_imu: /imu
@@ -23,75 +32,129 @@ launch:
 
 controle_robo:
   ros__parameters:
+    # ----------------------------
+    # Desvio local com LIDAR
+    # ----------------------------
+    # Velocidade angular base das manobras de desvio.
     velocidade_angular_desvio: -0.4
+    # Distancia frontal minima para considerar que ha obstaculo.
     distancia_obstaculo: 0.6
+    # Setor frontal do LaserScan, em graus, usado para medir obstaculos.
     angulo_frontal_graus: 30.0
-    # Durante o retorno, a bandeira/garra aparece no centro do LIDAR.
-    # Esta janela central e ignorada somente depois da captura.
+    # Depois da captura, a bandeira aparece no centro do LIDAR; esta janela
+    # central e ignorada somente durante o retorno para a base.
     angulo_ignorar_lidar_garra_graus: 8.0
+    # Folga lateral minima para terminar uma manobra de desvio.
     distancia_lateral_desvio: 0.1
 
+    # ----------------------------
+    # Velocidades de navegacao
+    # ----------------------------
+    # Velocidade linear quando o robo ainda esta procurando a bandeira.
     velocidade_exploracao: 0.4
+    # Velocidade linear no ajuste fino perto da haste da bandeira.
     velocidade_posicionamento: 0.08
+    # Acima desta distancia frontal, a exploracao pode acelerar um pouco.
     distancia_velocidade_livre: 1.8
+    # Multiplicador aplicado quando a frente esta livre.
     fator_velocidade_livre: 1.2
+    # Multiplicador aplicado quando existe algo perto, mas ainda sem desvio.
     fator_velocidade_proxima: 0.4
-
     # Curva suave de exploracao para varrer a camera sem alvo conhecido.
     amplitude_varredura_camera: 0.05
-
+    # Limite angular para busca, alinhamento visual e waypoints.
     velocidade_giro_busca: 0.3
+
+    # ----------------------------
+    # Controle visual da bandeira
+    # ----------------------------
+    # Ganho proporcional para centralizar a haste da bandeira na imagem.
     ganho_angular_bandeira: 0.9
+    # Erro horizontal normalizado aceito como "haste alinhada".
     erro_alinhamento_bandeira: 0.12
-
-    area_minima_bandeira: 5.0
+    # Area relativa minima para abandonar o A* e entrar no ajuste visual.
     area_posicionamento_bandeira: 0.035
-    area_coleta_bandeira: 0.07
+    # Distancia frontal do LIDAR para fechar a garra com a haste alinhada.
     distancia_coleta_bandeira: 0.45
+    # Maximo de pixels de obstaculo na faixa central da imagem antes da coleta.
     limite_obstaculo_semantico_posicionamento: 0.02
-
+    # Tempo sem deteccao antes de tratar a bandeira como perdida.
     tempo_perda_bandeira: 1.0
+
+    # ----------------------------
+    # Desvio e recuperacao de rota
+    # ----------------------------
+    # Tempo minimo girando antes de tentar sair do obstaculo em arco.
     tempo_minimo_desvio: 0.8
 
+    # ----------------------------
+    # Garra
+    # ----------------------------
     habilitar_garra: true
-    # No controller deste robo, o vetor e:
-    # [haste, garra_direita, garra_esquerda].
-    # Valor negativo na haste levanta a bandeira para o transporte.
+    # O controller espera: [haste, garra_direita, garra_esquerda].
+    # Haste baixa para abrir/depositar.
     garra_extensao_aberta: 0.0
     garra_direita_aberta: -0.06
     garra_esquerda_aberta: 0.06
+    # Haste levantada para transportar a bandeira sem arrastar no chao.
     garra_extensao_captura: -0.8
     garra_direita_captura: 0.0
     garra_esquerda_captura: 0.0
 
-    # Planejamento hibrido: visao estima a bandeira, A* aproxima pelo mapa.
+    # ----------------------------
+    # Planejamento por mapa
+    # ----------------------------
+    # Ativa o uso de /grid_map e A* para chegar perto da bandeira/base.
     usar_planejamento_grade: true
+    # Campo de visao horizontal da camera, usado na trigonometria da bandeira.
     fov_horizontal_camera: 1.57
+    # Medidas aproximadas do blob semantico da bandeira na simulacao.
     largura_real_bandeira: 0.3
-    # A label 25 pega o conjunto visual da bandeira, nao so o painel azul.
-    # Por isso usamos a altura aproximada do blob completo na camera.
     altura_real_bandeira: 0.48
+    # Faixa valida da estimativa visual. Leituras fora disso viram suspeitas.
     distancia_minima_estimativa: 0.2
     distancia_maxima_estimativa: 10.0
+    # Confianca minima para transformar uma deteccao visual em alvo do A*.
     confianca_minima_planejamento: 0.35
+    # Numero de estimativas recentes usadas na media movel da bandeira.
     historico_estimativas_bandeira: 5
-
+    # Custo de celulas desconhecidas no A*. Permite explorar, mas com cautela.
     custo_desconhecido: 3.0
+    # Margem em celulas ao redor de obstaculos do mapa.
     inflacao_obstaculo_celulas: 1
+    # Distancia para considerar um waypoint ou alvo planejado alcancado.
     tolerancia_waypoint: 0.25
     tolerancia_alvo_planejado: 0.6
+    # Ganho angular e velocidade linear nominal ao seguir waypoints.
     ganho_angular_waypoint: 1.0
     velocidade_seguindo_caminho: 0.32
+    # Replaneja quando a camera muda bastante a estimativa da bandeira.
     deslocamento_replanejamento_alvo: 1.5
     intervalo_minimo_replanejamento_visual: 3.0
+    # O A* mira um ponto antes da bandeira para nao colidir com a haste.
     distancia_aproximacao_bandeira: 0.55
+
+    # ----------------------------
+    # Criterios de "bandeira inteira"
+    # ----------------------------
+    # Margem da bbox em relacao as bordas da imagem.
     margem_borda_bandeira_px: 8
+    # Area relativa minima para considerar que a leitura visual e boa.
     area_minima_bandeira_inteira: 0.003
+    # Quantos frames consecutivos confirmam a bandeira inteira.
     frames_bandeira_inteira: 3
 
+    # ----------------------------
+    # Detector semantico
+    # ----------------------------
+    # Labels do labels_map: bandeira azul e obstaculos da arena.
     label_bandeira_azul: 25
     label_obstaculo: 30
+    # Area minima em pixels para aceitar um contorno da bandeira.
+    area_minima_bandeira: 5.0
+    # Tolerancia usada somente no fallback por colored_map.
     tolerancia_cor_bandeira: 0.0
+    # Ative quando quiser investigar mascara, contornos e labels da camera.
     debug_detector: false
     publicar_mascara_debug: false
     periodo_log_debug: 1.0

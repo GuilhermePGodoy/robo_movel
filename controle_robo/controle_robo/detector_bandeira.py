@@ -47,10 +47,10 @@ class DetectorBandeira(Node):
 
         self.declare_parameter('label_bandeira_azul', 25)
         self.declare_parameter('label_obstaculo', 30)
-        self.declare_parameter('area_minima_bandeira', 25.0)
+        self.declare_parameter('area_minima_bandeira', 5.0)
         self.declare_parameter('tolerancia_cor_bandeira', 0.0)
-        self.declare_parameter('debug_detector', True)
-        self.declare_parameter('publicar_mascara_debug', True)
+        self.declare_parameter('debug_detector', False)
+        self.declare_parameter('publicar_mascara_debug', False)
         self.declare_parameter('periodo_log_debug', 1.0)
 
         self.label_bandeira_azul = int(
@@ -100,11 +100,10 @@ class DetectorBandeira(Node):
             10,
         )
 
+        debug_status = 'ativo' if self.debug_detector else 'inativo'
         self.get_logger().info(
-            'Detector da bandeira azul iniciado: procurando label '
-            f'{self.label_bandeira_azul} no labels_map. '
-            'Debug visual em /bandeira_azul/debug_mask e '
-            '/bandeira_azul/debug_info.'
+            'DETECTOR | alvo=label_'
+            f'{self.label_bandeira_azul} | debug={debug_status}'
         )
 
     def camera_callback(self, msg: Image):
@@ -113,7 +112,7 @@ class DetectorBandeira(Node):
         except Exception as exc:
             self.log_periodico(
                 'erro_camera',
-                f'Camera: falha ao converter imagem segmentada: {exc}',
+                f'CAMERA | erro=converter_imagem_segmentada | detalhe={exc}',
                 periodo=2.0,
                 nivel='warn',
             )
@@ -167,17 +166,22 @@ class DetectorBandeira(Node):
                 altura=altura,
                 obstaculo_central_relativo=obstaculo_central_relativo,
             )
-            self.log_periodico(
-                'sem_bandeira',
-                (
-                    'Camera: nenhuma regiao valida da bandeira azul. '
-                    f'origem={origem_segmentacao}, '
-                    f'pixels_label={pixels_mascara}, '
-                    f'contornos={len(contornos)}, maior_area={maior_area:.1f}, '
-                    f'area_minima={self.area_minima_bandeira:.1f}.'
-                ),
-                periodo=3.0,
-            )
+            # Mensagem util quando a deteccao falha, mas barulhenta durante a
+            # exploracao normal. Ative debug_detector no YAML para ve-la.
+            if self.debug_detector:
+                self.log_periodico(
+                    'sem_bandeira',
+                    (
+                        'CAMERA | bandeira=nao | '
+                        f'origem={origem_segmentacao}, '
+                        f'pixels_label={pixels_mascara}, '
+                        f'contornos={len(contornos)}, '
+                        f'maior_area={maior_area:.1f}, '
+                        f'area_min={self.area_minima_bandeira:.1f}, '
+                        f'obst_img={obstaculo_central_relativo:.3f}'
+                    ),
+                    periodo=3.0,
+                )
             return
 
         maior_contorno = max(contornos_validos, key=cv2.contourArea)
@@ -222,13 +226,13 @@ class DetectorBandeira(Node):
         self.log_periodico(
             'bandeira_visivel',
             (
-                'Camera: bandeira azul visivel '
-                f'({origem_segmentacao}) '
+                'CAMERA | bandeira=sim | '
+                f'origem={origem_segmentacao}, '
                 f'cx={centro_x:.0f}/{largura}, erro={erro_x:+.2f}, '
                 f'haste_x={centro_x_haste:.0f}, '
                 f'erro_haste={erro_x_haste:+.2f}, '
-                f'area={area:.0f}px ({area_relativa:.3f}), '
-                f'obst_central={obstaculo_central_relativo:.3f}.'
+                f'area={area:.0f}px/{area_relativa:.3f}, '
+                f'obst_img={obstaculo_central_relativo:.3f}'
             ),
             periodo=1.0,
         )
@@ -291,7 +295,7 @@ class DetectorBandeira(Node):
         self.log_periodico(
             'debug_frame',
             (
-                'Debug detector: '
+                'DEBUG_CAMERA | '
                 f'encoding={encoding}, dtype={frame.dtype}, '
                 f'shape={frame.shape}, canais={canais}, '
                 f'origem={origem_segmentacao}, '
@@ -348,7 +352,7 @@ class DetectorBandeira(Node):
         except Exception as exc:
             self.log_periodico(
                 'erro_mascara_debug',
-                f'Debug detector: falha ao publicar mascara: {exc}',
+                f'DEBUG_CAMERA | erro=publicar_mascara | detalhe={exc}',
                 periodo=2.0,
                 nivel='warn',
             )

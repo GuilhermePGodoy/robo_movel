@@ -13,6 +13,7 @@ from controle_robo.criterios_visuais import (
     bandeira_parcial_visivel as deteccao_parcial_visivel,
     bandeira_util_para_posicionamento as deteccao_util_para_posicionamento,
 )
+from controle_robo.garra import ControleGarra
 from controle_robo.modelos_missao import EstadoMissao
 
 
@@ -28,8 +29,7 @@ class MaquinaEstadosMissao:
         self.robo = robo
         self.estado_atual = EstadoMissao.EXPLORANDO
         self.instante_inicio_estado = time.monotonic()
-        self.garra_aberta = False
-        self.garra_fechada = False
+        self.garra = ControleGarra(robo)
         self.bandeira_capturada = False
         self.bandeira_entregue = False
         self.estado_retorno_desvio = EstadoMissao.EXPLORANDO
@@ -123,11 +123,11 @@ class MaquinaEstadosMissao:
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
-                'explorando em curva suave; '
+                'acao=explorar_curva | '
                 f'pose=({robo.x:.2f}, {robo.y:.2f}, yaw={robo.yaw:.2f}), '
                 f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
                 f'fator_vel={fator_obstaculo:.2f}, '
-                f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
+                f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
             periodo=1.5,
         )
@@ -143,10 +143,11 @@ class MaquinaEstadosMissao:
         det = self.robo.deteccao_bandeira
         self.log_estado_periodico(
             (
-                'bandeira detectada; calculando direcao relativa '
-                f'(erro={det.erro_x:+.2f}, '
+                'visao=bandeira | '
+                f'area={det.area_relativa:.3f}, '
+                f'erro_blob={det.erro_x:+.2f}, '
                 f'erro_haste={det.erro_x_haste:+.2f}, '
-                f'area={det.area_relativa:.3f})'
+                f'obst_img={det.obstaculo_central_relativo:.3f}'
             ),
             periodo=0.5,
         )
@@ -233,14 +234,13 @@ class MaquinaEstadosMissao:
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
-                f'{acao}; '
+                f'acao={acao}; '
                 f'erro_blob={det.erro_x:+.2f}, '
                 f'erro_haste={det.erro_x_haste:+.2f}, '
                 f'area={det.area_relativa:.3f}, '
                 f'conf={estimativa.confianca:.2f}, '
                 f'fator_vel={fator_obstaculo:.2f}, '
-                f'cmd_linear={linear:.2f}, '
-                f'cmd_angular={angular:+.2f}'
+                f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
             periodo=1.0,
         )
@@ -290,8 +290,7 @@ class MaquinaEstadosMissao:
             det = robo.deteccao_bandeira
             self.log_estado_periodico(
                 (
-                    'bandeira visivel durante A*, mas ainda nao esta pronta '
-                    'para posicionamento visual; '
+                    'visao=bandeira_parcial | aguardando_posicionamento | '
                     f'area={det.area_relativa:.3f}, '
                     f'min_pos={robo.area_posicionamento_bandeira:.3f}, '
                     f'obst_central={robo.obstaculo_central_semantico:.3f}, '
@@ -395,10 +394,10 @@ class MaquinaEstadosMissao:
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
-                'seguindo A* para bandeira; '
+                'acao=seguir_astar_bandeira | '
                 f'wp={robo.indice_waypoint + 1}/{len(robo.caminho_planejado)}, '
                 f'dist_wp={distancia:.2f}m, erro_yaw={erro_yaw:+.2f}, '
-                f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
+                f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
             periodo=0.8,
         )
@@ -420,7 +419,7 @@ class MaquinaEstadosMissao:
             self.fase_desvio = 'avancando'
             self.instante_inicio_avanco_desvio = agora
             robo.get_logger().info(
-                'Desvio: frente abriu; avancando em arco antes de replanejar.'
+                'DESVIO | fase=arco | motivo=frente_e_laterais_livres'
             )
 
         if self.fase_desvio == 'avancando':
@@ -449,11 +448,11 @@ class MaquinaEstadosMissao:
                 robo.publicar_velocidade(linear, angular)
                 self.log_estado_periodico(
                     (
-                        f'desviando: avancando em arco para {sentido}; '
+                        f'fase=arco | lado={sentido} | '
                         f'frente={robo.formatar_distancia(distancia_frontal)}, '
                         f'esq={robo.formatar_distancia(robo.distancia_esquerda)}, '
                         f'dir={robo.formatar_distancia(robo.distancia_direita)}, '
-                        f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
+                        f'cmd=({linear:.2f}, {angular:+.2f})'
                     ),
                     periodo=0.5,
                 )
@@ -467,7 +466,7 @@ class MaquinaEstadosMissao:
         ):
             self.log_estado_periodico(
                 (
-                    'frente livre, mas lateral ainda apertada; '
+                    'fase=giro | motivo=lateral_apertada | '
                     f'lateral_min={robo.formatar_distancia(distancia_lateral)}, '
                     f'lateral_minima={robo.distancia_lateral_desvio:.2f}m'
                 ),
@@ -479,12 +478,13 @@ class MaquinaEstadosMissao:
         robo.publicar_velocidade(0.0, angular)
         self.log_estado_periodico(
             (
-                f'desviando: girando para {sentido}; '
+                f'fase=giro | lado={sentido} | '
                 f'frente={robo.formatar_distancia(distancia_frontal)}, '
                 f'esq={robo.formatar_distancia(robo.distancia_esquerda)}, '
                 f'dir={robo.formatar_distancia(robo.distancia_direita)}, '
                 f'lateral_min={robo.formatar_distancia(distancia_lateral)}, '
-                f'lateral_minima={robo.distancia_lateral_desvio:.2f}m'
+                f'lateral_minima={robo.distancia_lateral_desvio:.2f}m, '
+                f'cmd=(0.00, {angular:+.2f})'
             ),
             periodo=0.8,
         )
@@ -556,8 +556,8 @@ class MaquinaEstadosMissao:
                 robo.publicar_velocidade(0.0, angular)
                 self.log_estado_periodico(
                     (
-                        'no alvo do A* sem bandeira recente; fazendo busca '
-                        'local curta antes de abandonar a estimativa'
+                        'acao=busca_local | motivo=alvo_astar_sem_bandeira | '
+                        f'cmd=(0.00, {angular:+.2f})'
                     ),
                     periodo=0.7,
                 )
@@ -640,13 +640,13 @@ class MaquinaEstadosMissao:
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
-                f'{acao}; erro_haste={det.erro_x_haste:+.2f}, '
+                f'acao={acao}; erro_haste={det.erro_x_haste:+.2f}, '
                 f'erro_blob={det.erro_x:+.2f}, '
                 f'area={det.area_relativa:.3f}, '
                 f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
                 f'dist_coleta={robo.distancia_coleta_bandeira:.2f}m, '
                 f'fator_vel={fator_obstaculo:.2f}, '
-                f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
+                f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
             periodo=0.7,
         )
@@ -667,8 +667,8 @@ class MaquinaEstadosMissao:
 
         self.log_estado_periodico(
             (
-                'capturando bandeira; robo parado enquanto a garra fecha '
-                f'em pose=({robo.x:.2f}, {robo.y:.2f}).'
+                'acao=fechar_garra | cmd=(0.00, 0.00) | '
+                f'pose=({robo.x:.2f}, {robo.y:.2f})'
             ),
             periodo=0.5,
         )
@@ -737,10 +737,10 @@ class MaquinaEstadosMissao:
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
-                'retornando para base por A*; '
+                'acao=seguir_astar_base | '
                 f'wp={robo.indice_waypoint + 1}/{len(robo.caminho_planejado)}, '
                 f'dist_wp={distancia:.2f}m, erro_yaw={erro_yaw:+.2f}, '
-                f'cmd_linear={linear:.2f}, cmd_angular={angular:+.2f}'
+                f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
             periodo=0.8,
         )
@@ -760,7 +760,7 @@ class MaquinaEstadosMissao:
             return
 
         self.log_estado_periodico(
-            'entregando bandeira na base; abrindo garra',
+            'acao=abrir_garra | motivo=depositar_bandeira | cmd=(0.00, 0.00)',
             periodo=0.5,
         )
 
@@ -775,7 +775,7 @@ class MaquinaEstadosMissao:
             detalhe = 'missao concluida ou pausada no objetivo atual'
 
         self.log_estado_periodico(
-            f'{detalhe}; robo parado',
+            f'acao=parado | {detalhe}',
             periodo=2.0,
         )
 
@@ -999,11 +999,10 @@ class MaquinaEstadosMissao:
             robo.log_periodico(
                 'obstaculo_semantico_posicionamento',
                 (
-                    'Imagem semantica ainda mostra obstaculo na faixa central; '
-                    'adiando posicionamento para coleta. '
+                    'VISAO | obstaculo_central=sim | '
                     f'obst_central={robo.obstaculo_central_semantico:.3f}, '
-                    'limite='
-                    f'{robo.limite_obstaculo_semantico_posicionamento:.3f}.'
+                    f'limite={robo.limite_obstaculo_semantico_posicionamento:.3f} | '
+                    'acao=adiar_posicionamento'
                 ),
                 periodo=0.8,
             )
@@ -1041,12 +1040,12 @@ class MaquinaEstadosMissao:
             robo.log_periodico(
                 'posicionamento_lidar_alvo',
                 (
-                    'Posicionamento: LIDAR viu algo a frente, mas a bandeira '
-                    'esta alinhada na haste; mantendo aproximacao fina. '
+                    'LIDAR | frente_ocupada_pelo_alvo=provavel | '
                     f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
                     f'area={det.area_relativa:.3f}, '
                     f'erro_haste={det.erro_x_haste:+.2f}, '
-                    f'dist_coleta={robo.distancia_coleta_bandeira:.2f}m.'
+                    f'dist_coleta={robo.distancia_coleta_bandeira:.2f}m | '
+                    'acao=manter_aproximacao'
                 ),
                 periodo=1.0,
             )
@@ -1098,52 +1097,13 @@ class MaquinaEstadosMissao:
     # Comandos auxiliares. A garra so abre quando o robo ja entrou na fase
     # final de posicionamento; ate la ela nao precisa ficar aberta.
     def abrir_garra(self, forcar: bool = False):
-        robo = self.robo
-        if not robo.habilitar_garra or self.garra_fechada:
-            return
-        if self.garra_aberta and not forcar:
-            return
-
-        robo.publicar_garra(robo.comando_garra_aberta)
-        ja_estava_aberta = self.garra_aberta
-        self.garra_aberta = True
-        if not ja_estava_aberta:
-            robo.get_logger().info(
-                'Garra: aberta para captura futura '
-                f'{robo.comando_garra_aberta}.'
-            )
+        self.garra.abrir_para_coleta(forcar)
 
     def fechar_garra(self, forcar: bool = False):
-        robo = self.robo
-        if not robo.habilitar_garra or (self.garra_fechada and not forcar):
-            return
-
-        robo.publicar_garra(robo.comando_garra_captura)
-        ja_estava_fechada = self.garra_fechada
-        self.garra_aberta = False
-        self.garra_fechada = True
-        if not ja_estava_fechada:
-            robo.get_logger().info(
-                'Garra: comando de captura enviado '
-                f'{robo.comando_garra_captura}.'
-            )
+        self.garra.fechar_para_transporte(forcar)
 
     def soltar_garra(self, forcar: bool = False):
-        robo = self.robo
-        if not robo.habilitar_garra:
-            return
-        if self.garra_aberta and not forcar:
-            return
-
-        ja_estava_aberta = self.garra_aberta and not self.garra_fechada
-        robo.publicar_garra(robo.comando_garra_aberta)
-        self.garra_aberta = True
-        self.garra_fechada = False
-        if not ja_estava_aberta:
-            robo.get_logger().info(
-                'Garra: abrindo para depositar bandeira na base '
-                f'{robo.comando_garra_aberta}.'
-            )
+        self.garra.soltar_na_base(forcar)
 
     def trocar_estado(self, novo_estado: EstadoMissao, motivo: str):
         if novo_estado == self.estado_atual:
@@ -1160,13 +1120,51 @@ class MaquinaEstadosMissao:
         if novo_estado == EstadoMissao.POSICIONANDO_PARA_COLETA:
             self.abrir_garra(forcar=True)
         self.robo.get_logger().info(
-            f'Estado: {estado_anterior.value} -> {novo_estado.value} | {motivo}'
+            (
+                f'TRANSICAO | {estado_anterior.value} -> {novo_estado.value} | '
+                f'motivo={motivo} | '
+                f'pose=({self.robo.x:.2f}, {self.robo.y:.2f}, '
+                f'yaw={self.robo.yaw:.2f}) | '
+                f'{self.resumo_lidar()} | {self.resumo_visao()}'
+            )
         )
 
     def log_estado_periodico(self, mensagem: str, periodo: float = 1.0):
         chave = f'estado_{self.estado_atual.value}'
         self.robo.log_periodico(
             chave,
-            f'[{self.estado_atual.value}] {mensagem}',
+            f'ESTADO {self.estado_atual.value} | {mensagem}',
             periodo=periodo,
+        )
+
+    def resumo_lidar(self):
+        robo = self.robo
+        frente = self.distancia_frontal_ativa()
+        return (
+            'lidar('
+            f'fr={robo.formatar_distancia(frente)}, '
+            f'esq={robo.formatar_distancia(robo.distancia_esquerda)}, '
+            f'dir={robo.formatar_distancia(robo.distancia_direita)}, '
+            f'desvio={robo.nome_lado_desvio()}'
+            ')'
+        )
+
+    def resumo_visao(self):
+        robo = self.robo
+        det = robo.deteccao_bandeira
+        if self.bandeira_recente():
+            return (
+                'visao('
+                'bandeira=sim, '
+                f'area={det.area_relativa:.3f}, '
+                f'erro_haste={det.erro_x_haste:+.2f}, '
+                f'obst_img={robo.obstaculo_central_semantico:.3f}'
+                ')'
+            )
+
+        return (
+            'visao('
+            'bandeira=nao, '
+            f'obst_img={robo.obstaculo_central_semantico:.3f}'
+            ')'
         )

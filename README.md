@@ -11,6 +11,9 @@ Material de apresentacao:
 [slides em PowerPoint](docs/robo_movel_algoritmo_ensino_medio.pptx) e
 [roteiro em Markdown](docs/apresentacao_trabalho1.md).
 
+Para entender a organizacao interna do controle, veja tambem a
+[documentacao de arquitetura](docs/arquitetura_controle_robo.md).
+
 ## Como Rodar
 
 ```bash
@@ -94,6 +97,10 @@ A logica da missao foi separada em alguns arquivos pequenos:
   camera para estimar distancia, angulo e confianca da bandeira.
 - `src/controle_robo/controle_robo/planejador_grade.py`: A* sobre o
   `OccupancyGrid`, com custo maior para celulas desconhecidas.
+- `src/controle_robo/controle_robo/lidar.py`: leitura organizada do LaserScan
+  para desvio local e retorno com bandeira na garra.
+- `src/controle_robo/controle_robo/garra.py`: comandos de abrir, capturar e
+  depositar a bandeira.
 
 - `EXPLORANDO`: avanca em curva suave para varrer a camera sem assumir a
   posicao da bandeira. Se o LIDAR detecta obstaculo, entra em desvio.
@@ -107,8 +114,6 @@ A logica da missao foi separada em alguns arquivos pequenos:
   mapa mostrar um bloqueio novo.
 - `DESVIANDO_OBSTACULO`: gira para o lado com maior distancia livre medida
   pelo LIDAR. Depois replaneja, retoma busca visual ou volta a explorar.
-- `REDETECTANDO_BANDEIRA`: se a bandeira some da camera, gira no sentido da
-  ultima deteccao por alguns segundos antes de voltar a explorar.
 - `POSICIONANDO_PARA_COLETA`: faz o ajuste fino de orientacao e distancia,
   aproximando devagar quando a bandeira esta centralizada.
 - `CAPTURANDO_BANDEIRA`: para o robo e envia comando simples para fechar a
@@ -139,8 +144,10 @@ Alguns ajustes uteis:
   tambem para acionar o desvio caso algum objeto fique perto demais do lado.
 - `fator_velocidade_livre` e `fator_velocidade_proxima`: aceleracao em caminho
   livre e reducao de velocidade perto de obstaculos.
-- `area_posicionamento_bandeira` e `area_coleta_bandeira`: limiares visuais
-  para aproximacao final.
+- `area_posicionamento_bandeira`: area visual minima para trocar o A* pelo
+  ajuste fino pela camera.
+- `distancia_coleta_bandeira`: distancia frontal usada para fechar a garra
+  quando a haste esta alinhada.
 - `usar_planejamento_grade`: habilita/desabilita A* sobre `/grid_map`.
 - `confianca_minima_planejamento`: confianca minima da estimativa visual antes
   de planejar caminho.
@@ -180,5 +187,3 @@ enxerga a bandeira azul.
   positivo por cor. O fallback por `colored_map` existe apenas para debug.
 - A garra recebe comandos no topico `/gripper_controller/commands`; a qualidade
   fisica da captura ainda depende da posicao final no Gazebo.
-- Para acelerar a iteracao durante testes, ajuste primeiro velocidades e
-  limiares no YAML em vez de alterar o codigo.

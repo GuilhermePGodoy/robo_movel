@@ -96,8 +96,8 @@ Estados implementados:
 - `DESVIANDO_OBSTACULO`
   - Usa LIDAR para girar para o lado mais livre.
   - So termina quando ha folga frontal e lateral.
-- `REDETECTANDO_BANDEIRA`
-  - Gira na direcao da ultima deteccao se a bandeira sumir.
+- `REPLANEJANDO_CAMINHO` e `FALHA_PLANEJAMENTO`
+  - Tentam recuperar a rota quando o mapa muda ou o A* falha.
 - `POSICIONANDO_PARA_COLETA`
   - Ajusta orientacao e aproxima devagar.
 - `CAPTURANDO_BANDEIRA`

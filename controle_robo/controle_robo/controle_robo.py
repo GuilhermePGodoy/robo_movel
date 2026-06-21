@@ -14,6 +14,7 @@ from std_msgs.msg import Float32MultiArray, Float64MultiArray
 from scipy.spatial.transform import Rotation as R
 
 from controle_robo.estimador_bandeira import EstimadorBandeira
+from controle_robo.lidar import processar_scan
 from controle_robo.maquina_estados import MaquinaEstadosMissao
 from controle_robo.modelos_missao import DeteccaoBandeira, EstimativaBandeira
 from controle_robo.planejador_grade import MapaGrade, PlanejadorGrade
@@ -122,29 +123,28 @@ class ControleRobo(Node):
         self.timer = self.create_timer(0.1, self.maquina_estados.executar)
 
         self.get_logger().info(
-            'Controle iniciado em EXPLORANDO: procurando a bandeira azul.'
+            'CONTROLE | estado_inicial=EXPLORANDO | objetivo=bandeira_azul'
         )
 
     def configurar_parametros(self):
         """Declara e le os parametros usados pelo controle da missao."""
 
-        self.declare_parameter('velocidade_angular_desvio', -0.3)
-        self.declare_parameter('distancia_obstaculo', 0.5)
+        self.declare_parameter('velocidade_angular_desvio', -0.4)
+        self.declare_parameter('distancia_obstaculo', 0.6)
         self.declare_parameter('angulo_frontal_graus', 30.0)
         self.declare_parameter('angulo_ignorar_lidar_garra_graus', 8.0)
-        self.declare_parameter('distancia_lateral_desvio', 0.5)
-        self.declare_parameter('velocidade_exploracao', 0.08)
-        self.declare_parameter('velocidade_posicionamento', 0.04)
+        self.declare_parameter('distancia_lateral_desvio', 0.1)
+        self.declare_parameter('velocidade_exploracao', 0.4)
+        self.declare_parameter('velocidade_posicionamento', 0.08)
         self.declare_parameter('distancia_velocidade_livre', 1.8)
-        self.declare_parameter('fator_velocidade_livre', 1.35)
-        self.declare_parameter('fator_velocidade_proxima', 0.45)
-        self.declare_parameter('amplitude_varredura_camera', 0.18)
-        self.declare_parameter('velocidade_giro_busca', 0.25)
+        self.declare_parameter('fator_velocidade_livre', 1.2)
+        self.declare_parameter('fator_velocidade_proxima', 0.4)
+        self.declare_parameter('amplitude_varredura_camera', 0.05)
+        self.declare_parameter('velocidade_giro_busca', 0.3)
         self.declare_parameter('ganho_angular_bandeira', 0.9)
         self.declare_parameter('erro_alinhamento_bandeira', 0.12)
         self.declare_parameter('area_posicionamento_bandeira', 0.035)
-        self.declare_parameter('area_coleta_bandeira', 0.07)
-        self.declare_parameter('distancia_coleta_bandeira', 0.25)
+        self.declare_parameter('distancia_coleta_bandeira', 0.45)
         self.declare_parameter('limite_obstaculo_semantico_posicionamento', 0.02)
         self.declare_parameter('tempo_perda_bandeira', 1.0)
         self.declare_parameter('tempo_minimo_desvio', 0.8)
@@ -152,7 +152,7 @@ class ControleRobo(Node):
         self.declare_parameter('garra_extensao_aberta', 0.0)
         self.declare_parameter('garra_direita_aberta', -0.06)
         self.declare_parameter('garra_esquerda_aberta', 0.06)
-        self.declare_parameter('garra_extensao_captura', -1.0)
+        self.declare_parameter('garra_extensao_captura', -0.8)
         self.declare_parameter('garra_direita_captura', 0.0)
         self.declare_parameter('garra_esquerda_captura', 0.0)
         self.declare_parameter('usar_planejamento_grade', True)
@@ -161,15 +161,15 @@ class ControleRobo(Node):
         self.declare_parameter('largura_real_bandeira', 0.3)
         self.declare_parameter('altura_real_bandeira', 0.48)
         self.declare_parameter('distancia_minima_estimativa', 0.2)
-        self.declare_parameter('distancia_maxima_estimativa', 5.0)
-        self.declare_parameter('confianca_minima_planejamento', 0.70)
+        self.declare_parameter('distancia_maxima_estimativa', 10.0)
+        self.declare_parameter('confianca_minima_planejamento', 0.35)
         self.declare_parameter('historico_estimativas_bandeira', 5)
         self.declare_parameter('custo_desconhecido', 3.0)
         self.declare_parameter('inflacao_obstaculo_celulas', 1)
         self.declare_parameter('tolerancia_waypoint', 0.25)
         self.declare_parameter('tolerancia_alvo_planejado', 0.6)
         self.declare_parameter('ganho_angular_waypoint', 1.0)
-        self.declare_parameter('velocidade_seguindo_caminho', 0.15)
+        self.declare_parameter('velocidade_seguindo_caminho', 0.32)
         self.declare_parameter('deslocamento_replanejamento_alvo', 1.5)
         self.declare_parameter('intervalo_minimo_replanejamento_visual', 3.0)
         self.declare_parameter('distancia_aproximacao_bandeira', 0.55)
@@ -230,9 +230,6 @@ class ControleRobo(Node):
         )
         self.area_posicionamento_bandeira = float(
             self.get_parameter('area_posicionamento_bandeira').value
-        )
-        self.area_coleta_bandeira = float(
-            self.get_parameter('area_coleta_bandeira').value
         )
         self.distancia_coleta_bandeira = float(
             self.get_parameter('distancia_coleta_bandeira').value
@@ -328,93 +325,45 @@ class ControleRobo(Node):
         )
 
     def scan_callback(self, msg: LaserScan):
-        """Separa a leitura do laser em frente, esquerda e direita."""
+        """Atualiza a leitura organizada do LIDAR."""
 
         if not msg.ranges:
             return
 
-        distancias_frente = []
-        distancias_frente_sem_centro = []
-        distancias_esquerda = []
-        distancias_direita = []
-
-        for indice, distancia in enumerate(msg.ranges):
-            angulo = msg.angle_min + indice * msg.angle_increment
-            angulo = math.atan2(math.sin(angulo), math.cos(angulo))
-
-            leitura_valida = (
-                math.isfinite(distancia)
-                and msg.range_min <= distancia <= msg.range_max
-            )
-            if abs(angulo) <= self.limite_frontal and leitura_valida:
-                distancias_frente.append(distancia)
-                if abs(angulo) >= self.limite_central_garra:
-                    distancias_frente_sem_centro.append(distancia)
-            elif (
-                self.limite_frontal < angulo <= math.radians(90)
-                and leitura_valida
-            ):
-                distancias_esquerda.append(distancia)
-            elif (
-                -math.radians(90) <= angulo < -self.limite_frontal
-                and leitura_valida
-            ):
-                distancias_direita.append(distancia)
-
-        self.distancia_frontal = min(distancias_frente, default=math.inf)
-        self.distancia_frontal_sem_centro = min(
-            distancias_frente_sem_centro,
-            default=math.inf,
-        )
-        self.distancia_esquerda = min(distancias_esquerda, default=math.inf)
-        self.distancia_direita = min(distancias_direita, default=math.inf)
-
-        metade_frente = len(distancias_frente) // 2
-        self.distancia_esquerda_frente = min(
-            distancias_esquerda + distancias_frente[:metade_frente],
-            default=math.inf,
-        )
-        self.distancia_direita_frente = min(
-            distancias_direita + distancias_frente[metade_frente:],
-            default=math.inf,
+        leitura = processar_scan(
+            msg,
+            self.limite_frontal,
+            self.limite_central_garra,
+            self.distancia_obstaculo,
         )
 
-        self.obstaculo_a_frente = (
-            self.distancia_frontal < self.distancia_obstaculo
-            or self.distancia_direita < 0.35 * self.distancia_obstaculo
-            or self.distancia_esquerda < 0.35 * self.distancia_obstaculo
-        )
+        self.distancia_frontal = leitura.distancia_frontal
+        self.distancia_frontal_sem_centro = leitura.distancia_frontal_sem_centro
+        self.distancia_esquerda = leitura.distancia_esquerda
+        self.distancia_direita = leitura.distancia_direita
+        self.distancia_esquerda_frente = leitura.distancia_esquerda_frente
+        self.distancia_direita_frente = leitura.distancia_direita_frente
+        self.obstaculo_a_frente = leitura.obstaculo_a_frente
         self.obstaculo_a_frente_sem_centro = (
-            self.distancia_frontal_sem_centro < self.distancia_obstaculo
-            or self.distancia_direita < 0.35 * self.distancia_obstaculo
-            or self.distancia_esquerda < 0.35 * self.distancia_obstaculo
+            leitura.obstaculo_a_frente_sem_centro
         )
-
-        self.direcao_desvio = self.escolher_direcao_desvio()
+        self.direcao_desvio = leitura.direcao_desvio
 
         if self.obstaculo_a_frente:
             self.log_periodico(
                 'scan_obstaculo',
                 (
-                    f'LIDAR: obstaculo a {self.distancia_frontal:.2f} m; '
-                    'frente_sem_centro='
-                    f'{self.formatar_distancia(self.distancia_frontal_sem_centro)}, '
+                    'LIDAR | obstaculo=sim | '
+                    f'fr={self.formatar_distancia(self.distancia_frontal)}, '
+                    f'fr_sem_centro={self.formatar_distancia(self.distancia_frontal_sem_centro)}, '
                     f'esq={self.formatar_distancia(self.distancia_esquerda)}, '
                     f'dir={self.formatar_distancia(self.distancia_direita)}, '
-                    'esq_frente='
-                    f'{self.formatar_distancia(self.distancia_esquerda_frente)}, '
-                    'dir_frente='
-                    f'{self.formatar_distancia(self.distancia_direita_frente)}, '
-                    f'desvio={self.nome_lado_desvio()}.'
+                    f'esq_fr={self.formatar_distancia(self.distancia_esquerda_frente)}, '
+                    f'dir_fr={self.formatar_distancia(self.distancia_direita_frente)}, '
+                    f'desvio={self.nome_lado_desvio()}'
                 ),
                 periodo=1.0,
             )
-
-    def escolher_direcao_desvio(self):
-        # Z angular positivo gira para a esquerda; negativo gira para a direita.
-        if self.distancia_esquerda_frente >= self.distancia_direita_frente:
-            return 1.0
-        return -1.0
 
     def nome_lado_desvio(self):
         return 'esquerda' if self.direcao_desvio > 0.0 else 'direita'
@@ -431,7 +380,7 @@ class ControleRobo(Node):
         if self.pose_base is None:
             self.pose_base = (self.x, self.y)
             self.get_logger().info(
-                f'Base registrada na pose inicial ({self.x:.2f}, {self.y:.2f}).'
+                f'BASE | pose_inicial=({self.x:.2f}, {self.y:.2f})'
             )
 
         orientation_q = msg.pose.pose.orientation
@@ -449,18 +398,18 @@ class ControleRobo(Node):
         self.log_periodico(
             'mapa_recebido',
             (
-                'Mapa: /grid_map recebido '
+                'MAPA | topico=/grid_map | '
                 f'{msg.info.width}x{msg.info.height} '
-                f'res={msg.info.resolution:.2f}m.'
+                f'| res={msg.info.resolution:.2f}m'
             ),
-            periodo=5.0,
+            periodo=8.0,
         )
 
     def deteccao_bandeira_callback(self, msg: Float32MultiArray):
         if len(msg.data) < 10:
             self.log_periodico(
                 'deteccao_invalida',
-                'Deteccao: mensagem incompleta recebida do detector.',
+                'VISAO | deteccao=invalida | motivo=mensagem_incompleta',
                 periodo=2.0,
                 nivel='warn',
             )
@@ -486,14 +435,17 @@ class ControleRobo(Node):
         )
 
         if msg.data[0] < 0.5:
-            self.log_periodico(
-                'deteccao_bandeira_ausente',
-                (
-                    'Deteccao: bandeira ausente neste frame; '
-                    f'obst_central={self.obstaculo_central_semantico:.3f}.'
-                ),
-                periodo=2.0,
-            )
+            # Log ausente em todo frame polui bastante o terminal durante busca
+            # e retorno. Para investigar a camera sem bandeira, use
+            # debug_detector:=true no YAML/launch.
+            # self.log_periodico(
+            #     'deteccao_bandeira_ausente',
+            #     (
+            #         'VISAO | bandeira=nao | '
+            #         f'obst_img={self.obstaculo_central_semantico:.3f}'
+            #     ),
+            #     periodo=2.0,
+            # )
             return
 
         self.deteccao_bandeira = DeteccaoBandeira(
@@ -522,12 +474,11 @@ class ControleRobo(Node):
         self.log_periodico(
             'deteccao_bandeira',
             (
-                'Deteccao: alvo visual recebido '
+                'VISAO | bandeira=sim | '
                 f'erro={self.deteccao_bandeira.erro_x:+.2f}, '
                 f'erro_haste={self.deteccao_bandeira.erro_x_haste:+.2f}, '
                 f'area={self.deteccao_bandeira.area_relativa:.3f}, '
-                'obst_central='
-                f'{self.obstaculo_central_semantico:.3f}.'
+                f'obst_img={self.obstaculo_central_semantico:.3f}'
             ),
             periodo=1.0,
         )
@@ -561,7 +512,7 @@ class ControleRobo(Node):
         self.log_periodico(
             'estimativa_bandeira',
             (
-                'Estimativa bandeira: '
+                'ESTIMATIVA | alvo=bandeira | '
                 f'dist={est.distancia:.2f}m, '
                 f'ang={est.angulo_relativo:+.2f}rad, '
                 f'alvo=({est.x:.2f}, {est.y:.2f}), '
@@ -570,10 +521,10 @@ class ControleRobo(Node):
                 f'delta_pose={delta_pose:.2f}m, '
                 f'delta_yaw={delta_yaw:+.2f}rad, '
                 f'conf={est.confianca:.2f} '
-                f'[tam={est.confianca_tamanho:.2f}, '
+                f'(tam={est.confianca_tamanho:.2f}, '
                 f'centro={est.confianca_centro:.2f}, '
                 f'borda={est.confianca_borda:.2f}, '
-                f'lidar={est.confianca_lidar:.2f}].'
+                f'lidar={est.confianca_lidar:.2f})'
             ),
             periodo=0.8,
         )
@@ -590,8 +541,8 @@ class ControleRobo(Node):
             self.log_periodico(
                 'estimativa_fora_mapa',
                 (
-                    'Estimativa rejeitada: ponto de aproximacao fora do mapa '
-                    f'({alvo[0]:.2f}, {alvo[1]:.2f}).'
+                    'ESTIMATIVA | rejeitada=sim | motivo=fora_do_mapa | '
+                    f'alvo_aprox=({alvo[0]:.2f}, {alvo[1]:.2f})'
                 ),
                 periodo=1.0,
                 nivel='warn',
@@ -694,8 +645,9 @@ class ControleRobo(Node):
         self.log_periodico(
             f'planejamento_{destino}',
             (
-                f'Planejamento para {destino}: {motivo}; '
-                f'custo={resultado.custo:.2f}.'
+                f'A* | destino={destino} | {motivo} | '
+                f'waypoints={len(self.caminho_planejado)} | '
+                f'custo={resultado.custo:.2f}'
             ),
             periodo=0.2,
         )
@@ -776,12 +728,12 @@ class ControleRobo(Node):
                 self.log_periodico(
                     'waypoint_bloqueado_perto_robo',
                     (
-                        'Waypoint marcado como ocupado esta na vizinhanca '
-                        'liberada do robo; seguindo sem replanejar. '
+                        'A* | waypoint_ocupado_ignorado=sim | '
+                        'motivo=vizinhanca_do_robo | '
                         f'wp={self.indice_waypoint + 1}/'
                         f'{len(self.caminho_planejado)}, '
                         f'celula=({celula.x}, {celula.y}), '
-                        f'valor={valor}, dist={distancia:.2f}m.'
+                        f'valor={valor}, dist={distancia:.2f}m'
                     ),
                     periodo=0.8,
                 )
@@ -790,12 +742,12 @@ class ControleRobo(Node):
             self.log_periodico(
                 'waypoint_bloqueado',
                 (
-                    'Waypoint bloqueado pelo mapa: '
+                    'A* | waypoint_bloqueado=sim | '
                     f'wp={self.indice_waypoint + 1}/'
                     f'{len(self.caminho_planejado)}, '
                     f'final={self.ultimo_waypoint_bloqueado_final}, '
                     f'celula=({celula.x}, {celula.y}), '
-                    f'valor={valor}, dist={distancia:.2f}m.'
+                    f'valor={valor}, dist={distancia:.2f}m'
                 ),
                 periodo=0.8,
             )
@@ -838,14 +790,14 @@ class ControleRobo(Node):
         self.log_periodico(
             'replanejamento_alvo_bandeira',
             (
-                'Replanejamento: alvo visual da bandeira mudou '
-                f'{delta:.2f} m desde o ultimo A*; '
+                'A* | replanejar=sim | motivo=alvo_visual_mudou | '
+                f'delta={delta:.2f}m, '
                 f'antigo=({self.alvo_caminho[0]:.2f}, '
                 f'{self.alvo_caminho[1]:.2f}), '
                 f'novo_aprox=({novo_alvo_caminho[0]:.2f}, '
                 f'{novo_alvo_caminho[1]:.2f}), '
                 f'estimativa_real=({self.estimativa_bandeira.x:.2f}, '
-                f'{self.estimativa_bandeira.y:.2f}).'
+                f'{self.estimativa_bandeira.y:.2f})'
             ),
             periodo=0.5,
         )
