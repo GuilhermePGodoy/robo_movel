@@ -39,6 +39,8 @@ class ControleRobo(Node):
 
         self.obstaculo_a_frente = False
         self.distancia_frontal = math.inf
+        self.distancia_frontal_sem_centro = math.inf
+        self.obstaculo_a_frente_sem_centro = False
         self.distancia_esquerda = math.inf
         self.distancia_direita = math.inf
         self.distancia_esquerda_frente = math.inf
@@ -129,6 +131,7 @@ class ControleRobo(Node):
         self.declare_parameter('velocidade_angular_desvio', -0.3)
         self.declare_parameter('distancia_obstaculo', 0.5)
         self.declare_parameter('angulo_frontal_graus', 30.0)
+        self.declare_parameter('angulo_ignorar_lidar_garra_graus', 8.0)
         self.declare_parameter('distancia_lateral_desvio', 0.5)
         self.declare_parameter('velocidade_exploracao', 0.08)
         self.declare_parameter('velocidade_posicionamento', 0.04)
@@ -149,7 +152,7 @@ class ControleRobo(Node):
         self.declare_parameter('garra_extensao_aberta', 0.0)
         self.declare_parameter('garra_direita_aberta', -0.06)
         self.declare_parameter('garra_esquerda_aberta', 0.06)
-        self.declare_parameter('garra_extensao_captura', 0.0)
+        self.declare_parameter('garra_extensao_captura', -1.0)
         self.declare_parameter('garra_direita_captura', 0.0)
         self.declare_parameter('garra_esquerda_captura', 0.0)
         self.declare_parameter('usar_planejamento_grade', True)
@@ -184,6 +187,13 @@ class ControleRobo(Node):
             self.get_parameter('angulo_frontal_graus').value
         )
         self.limite_frontal = math.radians(self.angulo_frontal_graus)
+        self.angulo_ignorar_lidar_garra_graus = abs(float(
+            self.get_parameter('angulo_ignorar_lidar_garra_graus').value
+        ))
+        self.limite_central_garra = min(
+            self.limite_frontal,
+            math.radians(self.angulo_ignorar_lidar_garra_graus),
+        )
         self.distancia_lateral_desvio = float(
             self.get_parameter('distancia_lateral_desvio').value
         )
@@ -241,6 +251,10 @@ class ControleRobo(Node):
         self.habilitar_garra = bool(
             self.get_parameter('habilitar_garra').value
         )
+        # Ordem real do gripper_controller:
+        # [gripper_extension, right_gripper_joint, left_gripper_joint].
+        # A haste fica baixa quando aberta/depositando e levantada quando
+        # capturada/transportando a bandeira.
         self.comando_garra_aberta = [
             float(self.get_parameter('garra_extensao_aberta').value),
             float(self.get_parameter('garra_direita_aberta').value),
@@ -320,6 +334,7 @@ class ControleRobo(Node):
             return
 
         distancias_frente = []
+        distancias_frente_sem_centro = []
         distancias_esquerda = []
         distancias_direita = []
 
@@ -333,6 +348,8 @@ class ControleRobo(Node):
             )
             if abs(angulo) <= self.limite_frontal and leitura_valida:
                 distancias_frente.append(distancia)
+                if abs(angulo) >= self.limite_central_garra:
+                    distancias_frente_sem_centro.append(distancia)
             elif (
                 self.limite_frontal < angulo <= math.radians(90)
                 and leitura_valida
@@ -345,6 +362,10 @@ class ControleRobo(Node):
                 distancias_direita.append(distancia)
 
         self.distancia_frontal = min(distancias_frente, default=math.inf)
+        self.distancia_frontal_sem_centro = min(
+            distancias_frente_sem_centro,
+            default=math.inf,
+        )
         self.distancia_esquerda = min(distancias_esquerda, default=math.inf)
         self.distancia_direita = min(distancias_direita, default=math.inf)
 
@@ -363,6 +384,11 @@ class ControleRobo(Node):
             or self.distancia_direita < 0.35 * self.distancia_obstaculo
             or self.distancia_esquerda < 0.35 * self.distancia_obstaculo
         )
+        self.obstaculo_a_frente_sem_centro = (
+            self.distancia_frontal_sem_centro < self.distancia_obstaculo
+            or self.distancia_direita < 0.35 * self.distancia_obstaculo
+            or self.distancia_esquerda < 0.35 * self.distancia_obstaculo
+        )
 
         self.direcao_desvio = self.escolher_direcao_desvio()
 
@@ -371,6 +397,8 @@ class ControleRobo(Node):
                 'scan_obstaculo',
                 (
                     f'LIDAR: obstaculo a {self.distancia_frontal:.2f} m; '
+                    'frente_sem_centro='
+                    f'{self.formatar_distancia(self.distancia_frontal_sem_centro)}, '
                     f'esq={self.formatar_distancia(self.distancia_esquerda)}, '
                     f'dir={self.formatar_distancia(self.distancia_direita)}, '
                     'esq_frente='
@@ -695,7 +723,7 @@ class ControleRobo(Node):
                 break
             self.indice_waypoint += 1
 
-    def comando_para_waypoint(self):
+    def comando_para_waypoint(self, distancia_frontal=None):
         self.pular_waypoints_proximos()
         waypoint = self.waypoint_atual()
         if waypoint is None:
@@ -721,7 +749,7 @@ class ControleRobo(Node):
         linear = (
             self.velocidade_seguindo_caminho
             * fator_alinhamento
-            * self.fator_velocidade_por_distancia()
+            * self.fator_velocidade_por_distancia(distancia_frontal)
         )
         return linear, angular, distancia, erro_yaw
 
@@ -798,9 +826,10 @@ class ControleRobo(Node):
         ):
             return False
 
+        novo_alvo_caminho = self.ponto_aproximacao_bandeira()
         delta = math.hypot(
-            self.estimativa_bandeira.x - self.alvo_caminho[0],
-            self.estimativa_bandeira.y - self.alvo_caminho[1],
+            novo_alvo_caminho[0] - self.alvo_caminho[0],
+            novo_alvo_caminho[1] - self.alvo_caminho[1],
         )
         if delta < self.deslocamento_replanejamento_alvo:
             return False
@@ -813,7 +842,9 @@ class ControleRobo(Node):
                 f'{delta:.2f} m desde o ultimo A*; '
                 f'antigo=({self.alvo_caminho[0]:.2f}, '
                 f'{self.alvo_caminho[1]:.2f}), '
-                f'novo=({self.estimativa_bandeira.x:.2f}, '
+                f'novo_aprox=({novo_alvo_caminho[0]:.2f}, '
+                f'{novo_alvo_caminho[1]:.2f}), '
+                f'estimativa_real=({self.estimativa_bandeira.x:.2f}, '
                 f'{self.estimativa_bandeira.y:.2f}).'
             ),
             periodo=0.5,
@@ -862,16 +893,19 @@ class ControleRobo(Node):
         msg.pose.orientation.w = math.cos(estimativa.angulo_mundo / 2.0)
         self.alvo_estimado_pub.publish(msg)
 
-    def fator_velocidade_por_distancia(self):
-        if math.isinf(self.distancia_frontal):
+    def fator_velocidade_por_distancia(self, distancia_frontal=None):
+        if distancia_frontal is None:
+            distancia_frontal = self.distancia_frontal
+
+        if math.isinf(distancia_frontal):
             return self.fator_velocidade_livre
-        if self.distancia_frontal <= self.distancia_obstaculo:
+        if distancia_frontal <= self.distancia_obstaculo:
             return self.fator_velocidade_proxima
-        if self.distancia_frontal >= self.distancia_velocidade_livre:
+        if distancia_frontal >= self.distancia_velocidade_livre:
             return self.fator_velocidade_livre
 
         faixa = self.distancia_velocidade_livre - self.distancia_obstaculo
-        progresso = (self.distancia_frontal - self.distancia_obstaculo) / faixa
+        progresso = (distancia_frontal - self.distancia_obstaculo) / faixa
         return (
             self.fator_velocidade_proxima
             + progresso

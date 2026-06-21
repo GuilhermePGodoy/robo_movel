@@ -14,6 +14,7 @@ CONFIGURACOES_CONTROLE = [
     'velocidade_angular_desvio',
     'distancia_obstaculo',
     'angulo_frontal_graus',
+    'angulo_ignorar_lidar_garra_graus',
     'distancia_lateral_desvio',
     'velocidade_exploracao',
     'velocidade_posicionamento',
@@ -118,6 +119,11 @@ def generate_launch_description():
         default_value='30.0',
         description='Abertura angular frontal analisada no laser',
     )
+    angulo_ignorar_lidar_garra_graus_arg = DeclareLaunchArgument(
+        'angulo_ignorar_lidar_garra_graus',
+        default_value='8.0',
+        description='Janela central do LIDAR ignorada ao transportar a bandeira',
+    )
     distancia_lateral_desvio_arg = DeclareLaunchArgument(
         'distancia_lateral_desvio',
         default_value='0.5',
@@ -211,7 +217,7 @@ def generate_launch_description():
     garra_extensao_aberta_arg = DeclareLaunchArgument(
         'garra_extensao_aberta',
         default_value='0.0',
-        description='Posicao da junta de extensao quando a garra abre',
+        description='Posicao baixa da haste quando a garra abre/deposita',
     )
     garra_direita_aberta_arg = DeclareLaunchArgument(
         'garra_direita_aberta',
@@ -225,8 +231,8 @@ def generate_launch_description():
     )
     garra_extensao_captura_arg = DeclareLaunchArgument(
         'garra_extensao_captura',
-        default_value='0.0',
-        description='Posicao da junta de extensao na captura',
+        default_value='-1.0',
+        description='Posicao levantada da haste na captura/transporte',
     )
     garra_direita_captura_arg = DeclareLaunchArgument(
         'garra_direita_captura',
@@ -501,6 +507,10 @@ def generate_launch_description():
                     LaunchConfiguration('angulo_frontal_graus'),
                     value_type=float,
                 ),
+                'angulo_ignorar_lidar_garra_graus': ParameterValue(
+                    LaunchConfiguration('angulo_ignorar_lidar_garra_graus'),
+                    value_type=float,
+                ),
                 'distancia_lateral_desvio': ParameterValue(
                     LaunchConfiguration('distancia_lateral_desvio'),
                     value_type=float,
@@ -710,6 +720,7 @@ def generate_launch_description():
         velocidade_angular_desvio_arg,
         distancia_obstaculo_arg,
         angulo_frontal_graus_arg,
+        angulo_ignorar_lidar_garra_graus_arg,
         distancia_lateral_desvio_arg,
         velocidade_exploracao_arg,
         velocidade_posicionamento_arg,

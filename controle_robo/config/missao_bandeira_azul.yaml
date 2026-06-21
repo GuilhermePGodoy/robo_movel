@@ -3,7 +3,7 @@
 # ros2 launch controle_robo missao_bandeira_azul.launch.py config_file:=<caminho>
 
 launch:
-  world: arena_cilindros.sdf
+  world: empty_arena.sdf # arena_cilindros.sdf empty_arena.sdf arena_paredes.sdf
   use_sim_time: true
 
   # Pequenos atrasos para dar tempo do Gazebo, spawn e controladores subirem.
@@ -26,6 +26,9 @@ controle_robo:
     velocidade_angular_desvio: -0.4
     distancia_obstaculo: 0.6
     angulo_frontal_graus: 30.0
+    # Durante o retorno, a bandeira/garra aparece no centro do LIDAR.
+    # Esta janela central e ignorada somente depois da captura.
+    angulo_ignorar_lidar_garra_graus: 8.0
     distancia_lateral_desvio: 0.1
 
     velocidade_exploracao: 0.4
@@ -51,10 +54,13 @@ controle_robo:
     tempo_minimo_desvio: 0.8
 
     habilitar_garra: true
+    # No controller deste robo, o vetor e:
+    # [haste, garra_direita, garra_esquerda].
+    # Valor negativo na haste levanta a bandeira para o transporte.
     garra_extensao_aberta: 0.0
     garra_direita_aberta: -0.06
     garra_esquerda_aberta: 0.06
-    garra_extensao_captura: 0.0
+    garra_extensao_captura: -0.8
     garra_direita_captura: 0.0
     garra_esquerda_captura: 0.0
 
