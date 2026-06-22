@@ -1233,17 +1233,23 @@ class MaquinaEstadosMissao:
             )
             return False
 
-        # Se a haste esta centralizada e a bandeira ja esta grande na imagem,
-        # o alvo da garra e justamente o objeto que aparece no LIDAR. Quando a
-        # bandeira e vista de lado, alguns raios fora do centro tambem batem
-        # nela. Entao so desviamos se a leitura fora do centro estiver
-        # claramente mais perto que a leitura central de coleta.
+        # Se a haste esta centralizada e a bandeira ja tem tamanho suficiente
+        # para aproximacao visual, o alvo da garra e justamente o objeto que
+        # aparece no LIDAR. A area de coleta continua sendo exigida para fechar
+        # a garra, mas nao para permitir a aproximacao final.
+        area_minima_aproximacao = 0.8 * min(
+            robo.area_posicionamento_bandeira,
+            robo.area_coleta_bandeira,
+        )
         alvo_visual_alinhado = (
             self.bandeira_parcial_visivel()
             and abs(self.erro_x_haste()) <= robo.erro_alinhamento_bandeira
-            and det.area_relativa >= robo.area_coleta_bandeira
+            and det.area_relativa >= area_minima_aproximacao
             and math.isfinite(robo.distancia_frontal_coleta)
         )
+        # Quando a bandeira e vista de lado, alguns raios fora do centro tambem
+        # batem nela. Entao so desviamos se a leitura fora do centro estiver
+        # claramente mais perto que a leitura central de coleta.
         margem_mesmo_alvo = max(0.12, 0.25 * robo.distancia_obstaculo)
         fora_do_centro_compativel_com_alvo = (
             not robo.obstaculo_a_frente_sem_centro
@@ -1265,6 +1271,7 @@ class MaquinaEstadosMissao:
                     f'fr_sem_centro={robo.formatar_distancia(robo.distancia_frontal_sem_centro)}, '
                     f'margem={margem_mesmo_alvo:.2f}m, '
                     f'area={det.area_relativa:.3f}, '
+                    f'area_aprox={area_minima_aproximacao:.3f}, '
                     f'area_coleta={robo.area_coleta_bandeira:.3f}, '
                     f'erro_haste={det.erro_x_haste:+.2f} | '
                     'acao=continuar_aproximando'

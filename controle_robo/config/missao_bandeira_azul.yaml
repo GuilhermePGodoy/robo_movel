@@ -9,7 +9,7 @@
 launch:
   # Mundo carregado pelo pacote robo_movel.
   # Opcoes usuais: arena_cilindros.sdf, empty_arena.sdf, arena_paredes.sdf.
-  world: arena_paredes.sdf
+  world: arena_cilindros.sdf
 
   # Todos os nos usam o relogio da simulacao.
   use_sim_time: true
@@ -43,7 +43,7 @@ controle_robo:
     angulo_frontal_graus: 30.0
     # Depois da captura, a bandeira aparece no centro do LIDAR; esta janela
     # central e ignorada somente durante o retorno para a base.
-    angulo_ignorar_lidar_garra_graus: 12.0
+    angulo_ignorar_lidar_garra_graus: 30.0
     # Janela central estreita usada para decidir se a haste esta perto da garra.
     # Obstaculos no canto do cone frontal nao devem fechar a garra antes da hora.
     angulo_lidar_coleta_graus: 5.0
