@@ -29,6 +29,8 @@ class MaquinaEstadosMissao:
         self.robo = robo
         self.estado_atual = EstadoMissao.EXPLORANDO
         self.instante_inicio_estado = time.monotonic()
+        self.instante_inicio_missao = self.instante_inicio_estado
+        self.ultimo_inicio_exploracao_desconhecida = -math.inf
         self.garra = ControleGarra(robo)
         self.bandeira_capturada = False
         self.bandeira_entregue = False
@@ -52,6 +54,12 @@ class MaquinaEstadosMissao:
             ),
             EstadoMissao.SEGUINDO_CAMINHO_PARA_BANDEIRA: (
                 self.estado_seguindo_caminho_para_bandeira
+            ),
+            EstadoMissao.PLANEJANDO_EXPLORACAO_DESCONHECIDA: (
+                self.estado_planejando_exploracao_desconhecida
+            ),
+            EstadoMissao.SEGUINDO_CAMINHO_EXPLORACAO: (
+                self.estado_seguindo_caminho_exploracao
             ),
             EstadoMissao.DESVIANDO_OBSTACULO: self.estado_desviando_obstaculo,
             EstadoMissao.REPLANEJANDO_CAMINHO: self.estado_replanejando_caminho,
@@ -112,6 +120,18 @@ class MaquinaEstadosMissao:
                     f'({robo.distancia_frontal:.2f} m)'
                 ),
             )
+            return
+
+        if self.deve_explorar_fronteira_desconhecida():
+            self.trocar_estado(
+                EstadoMissao.PLANEJANDO_EXPLORACAO_DESCONHECIDA,
+                (
+                    'tempo sem ver bandeira excedeu '
+                    f'{robo.timeout_exploracao_desconhecida:.0f}s; '
+                    'tentando avancar para regiao desconhecida do mapa'
+                ),
+            )
+            robo.publicar_velocidade(0.0, 0.0)
             return
 
         # Busca simples: anda em uma curva leve para a camera varrer a arena.
@@ -379,6 +399,85 @@ class MaquinaEstadosMissao:
         self.log_estado_periodico(
             (
                 'acao=seguir_astar_bandeira | '
+                f'wp={robo.indice_waypoint + 1}/{len(robo.caminho_planejado)}, '
+                f'dist_wp={distancia:.2f}m, erro_yaw={erro_yaw:+.2f}, '
+                f'cmd=({linear:.2f}, {angular:+.2f})'
+            ),
+            periodo=0.8,
+        )
+
+    def estado_planejando_exploracao_desconhecida(self):
+        robo = self.robo
+        robo.publicar_velocidade(0.0, 0.0)
+        self.ultimo_inicio_exploracao_desconhecida = time.monotonic()
+
+        if self.bandeira_recente():
+            robo.limpar_caminho()
+            self.trocar_estado(
+                EstadoMissao.BANDEIRA_DETECTADA,
+                'bandeira apareceu antes da exploracao por fronteira',
+            )
+            return
+
+        sucesso, motivo = robo.planejar_para_desconhecido()
+        if sucesso:
+            self.trocar_estado(
+                EstadoMissao.SEGUINDO_CAMINHO_EXPLORACAO,
+                motivo,
+            )
+            return
+
+        self.trocar_estado(
+            EstadoMissao.EXPLORANDO,
+            f'exploracao por fronteira nao gerou rota; {motivo}',
+        )
+
+    def estado_seguindo_caminho_exploracao(self):
+        robo = self.robo
+
+        if self.bandeira_recente():
+            robo.limpar_caminho()
+            self.trocar_estado(
+                EstadoMissao.BANDEIRA_DETECTADA,
+                'bandeira encontrada durante ida para regiao desconhecida',
+            )
+            return
+
+        if robo.obstaculo_a_frente:
+            self.trocar_estado(
+                EstadoMissao.DESVIANDO_OBSTACULO,
+                (
+                    'obstaculo imediato durante exploracao por fronteira '
+                    f'({robo.distancia_frontal:.2f} m)'
+                ),
+            )
+            return
+
+        if robo.waypoint_bloqueado():
+            self.trocar_estado(
+                EstadoMissao.PLANEJANDO_EXPLORACAO_DESCONHECIDA,
+                'waypoint da exploracao desconhecida ficou bloqueado no mapa',
+            )
+            return
+
+        comando = robo.comando_para_waypoint()
+        if comando is None:
+            robo.limpar_caminho()
+            self.ultimo_inicio_exploracao_desconhecida = time.monotonic()
+            self.trocar_estado(
+                EstadoMissao.EXPLORANDO,
+                (
+                    'alvo desconhecido alcancado; retomando busca visual '
+                    'normal pela bandeira'
+                ),
+            )
+            return
+
+        linear, angular, distancia, erro_yaw = comando
+        robo.publicar_velocidade(linear, angular)
+        self.log_estado_periodico(
+            (
+                'acao=seguir_astar_desconhecido | '
                 f'wp={robo.indice_waypoint + 1}/{len(robo.caminho_planejado)}, '
                 f'dist_wp={distancia:.2f}m, erro_yaw={erro_yaw:+.2f}, '
                 f'cmd=({linear:.2f}, {angular:+.2f})'
@@ -897,6 +996,29 @@ class MaquinaEstadosMissao:
 
         return time.monotonic() - self.robo.ultimo_instante_bandeira
 
+    def tempo_sem_ver_bandeira(self):
+        if self.robo.ultimo_instante_bandeira is None:
+            return time.monotonic() - self.instante_inicio_missao
+
+        return self.tempo_desde_bandeira()
+
+    def deve_explorar_fronteira_desconhecida(self):
+        robo = self.robo
+        if not robo.habilitar_exploracao_desconhecida:
+            return False
+        if not robo.usar_planejamento_grade or robo.mapa_grade is None:
+            return False
+        if self.bandeira_recente():
+            return False
+        if self.tempo_sem_ver_bandeira() < robo.timeout_exploracao_desconhecida:
+            return False
+
+        agora = time.monotonic()
+        return (
+            agora - self.ultimo_inicio_exploracao_desconhecida
+            >= robo.intervalo_exploracao_desconhecida
+        )
+
     def deve_desviar_por_obstaculo_lateral(self):
         if self.estado_atual in (
             EstadoMissao.DESVIANDO_OBSTACULO,
@@ -1015,6 +1137,18 @@ class MaquinaEstadosMissao:
                 (
                     'obstaculo contornado com avanco em arco '
                     f'({distancia_lateral:.2f} m lateral); replanejando rota'
+                ),
+            )
+        elif self.estado_retorno_desvio in (
+            EstadoMissao.SEGUINDO_CAMINHO_EXPLORACAO,
+            EstadoMissao.PLANEJANDO_EXPLORACAO_DESCONHECIDA,
+        ):
+            self.trocar_estado(
+                EstadoMissao.PLANEJANDO_EXPLORACAO_DESCONHECIDA,
+                (
+                    'obstaculo contornado com avanco em arco '
+                    f'({distancia_lateral:.2f} m lateral); '
+                    'buscando nova fronteira desconhecida'
                 ),
             )
         elif (

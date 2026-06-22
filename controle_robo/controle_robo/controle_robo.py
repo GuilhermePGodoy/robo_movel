@@ -17,7 +17,7 @@ from controle_robo.estimador_bandeira import EstimadorBandeira
 from controle_robo.lidar import processar_scan
 from controle_robo.maquina_estados import MaquinaEstadosMissao
 from controle_robo.modelos_missao import DeteccaoBandeira, EstimativaBandeira
-from controle_robo.planejador_grade import MapaGrade, PlanejadorGrade
+from controle_robo.planejador_grade import Celula, MapaGrade, PlanejadorGrade
 
 
 class ControleRobo(Node):
@@ -159,6 +159,11 @@ class ControleRobo(Node):
         self.declare_parameter('garra_esquerda_captura', 0.0)
         self.declare_parameter('usar_planejamento_grade', True)
         self.declare_parameter('topico_mapa', '/grid_map')
+        self.declare_parameter('habilitar_exploracao_desconhecida', True)
+        self.declare_parameter('timeout_exploracao_desconhecida', 120.0)
+        self.declare_parameter('intervalo_exploracao_desconhecida', 45.0)
+        self.declare_parameter('distancia_minima_alvo_desconhecido', 1.0)
+        self.declare_parameter('max_candidatos_exploracao_desconhecida', 80)
         self.declare_parameter('fov_horizontal_camera', 1.57)
         self.declare_parameter('largura_real_bandeira', 0.3)
         self.declare_parameter('altura_real_bandeira', 0.48)
@@ -277,6 +282,21 @@ class ControleRobo(Node):
             self.get_parameter('usar_planejamento_grade').value
         )
         self.topico_mapa = str(self.get_parameter('topico_mapa').value)
+        self.habilitar_exploracao_desconhecida = bool(
+            self.get_parameter('habilitar_exploracao_desconhecida').value
+        )
+        self.timeout_exploracao_desconhecida = float(
+            self.get_parameter('timeout_exploracao_desconhecida').value
+        )
+        self.intervalo_exploracao_desconhecida = float(
+            self.get_parameter('intervalo_exploracao_desconhecida').value
+        )
+        self.distancia_minima_alvo_desconhecido = float(
+            self.get_parameter('distancia_minima_alvo_desconhecido').value
+        )
+        self.max_candidatos_exploracao_desconhecida = int(
+            self.get_parameter('max_candidatos_exploracao_desconhecida').value
+        )
         self.fov_horizontal_camera = float(
             self.get_parameter('fov_horizontal_camera').value
         )
@@ -613,6 +633,90 @@ class ControleRobo(Node):
             return False, 'pose inicial da base ainda nao foi registrada'
 
         return self.planejar_para(self.pose_base, 'base')
+
+    def planejar_para_desconhecido(self):
+        """Escolhe uma fronteira desconhecida e tenta chegar ate ela com A*.
+
+        Chamamos de fronteira uma celula desconhecida encostada em celula livre
+        ja mapeada. Isso evita mirar no meio do escuro completo: o robo anda ate
+        a borda do que conhece e deixa o mapper revelar o proximo trecho.
+        """
+
+        if not self.usar_planejamento_grade:
+            return False, 'planejamento por grade desabilitado'
+        if self.mapa_grade is None:
+            return False, 'controle ainda nao recebeu /grid_map'
+
+        candidatos = self.candidatos_alvo_desconhecido()
+        if not candidatos:
+            return False, 'nao ha fronteira desconhecida util no mapa'
+
+        limite = max(1, self.max_candidatos_exploracao_desconhecida)
+        for distancia, alvo_xy, celula in candidatos[:limite]:
+            sucesso, motivo = self.planejar_para(
+                alvo_xy,
+                'exploracao_desconhecida',
+            )
+            if sucesso:
+                return (
+                    True,
+                    (
+                        f'{motivo}; fronteira=({celula.x}, {celula.y}); '
+                        f'dist={distancia:.2f}m'
+                    ),
+                )
+
+        self.limpar_caminho()
+        return (
+            False,
+            (
+                'A* nao encontrou caminho para as fronteiras desconhecidas '
+                f'testadas ({min(limite, len(candidatos))}/{len(candidatos)})'
+            ),
+        )
+
+    def candidatos_alvo_desconhecido(self):
+        mapa = MapaGrade(self.mapa_grade)
+        inicio = mapa.world_to_grid(self.x, self.y)
+        if not mapa.celula_valida(inicio):
+            return []
+
+        bloqueadas = self.planejador_grade.criar_mascara_bloqueada(mapa)
+        self.planejador_grade.liberar_vizinhanca_do_robo(bloqueadas, inicio)
+
+        candidatos = []
+        for y in range(mapa.height):
+            for x in range(mapa.width):
+                celula = Celula(x, y)
+                if mapa.valor(celula) != -1:
+                    continue
+                if celula in bloqueadas:
+                    continue
+                if not self.celula_e_fronteira_desconhecida(mapa, celula):
+                    continue
+
+                alvo_xy = mapa.grid_to_world(celula)
+                distancia = math.hypot(alvo_xy[0] - self.x, alvo_xy[1] - self.y)
+                if distancia < self.distancia_minima_alvo_desconhecido:
+                    continue
+
+                candidatos.append((distancia, alvo_xy, celula))
+
+        candidatos.sort(key=lambda item: item[0])
+        return candidatos
+
+    @staticmethod
+    def celula_e_fronteira_desconhecida(mapa, celula):
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                if dx == 0 and dy == 0:
+                    continue
+
+                vizinha = Celula(celula.x + dx, celula.y + dy)
+                if mapa.celula_valida(vizinha) and mapa.valor(vizinha) == 0:
+                    return True
+
+        return False
 
     def planejar_para(self, alvo_xy, destino):
         if not self.usar_planejamento_grade:

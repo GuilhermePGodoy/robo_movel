@@ -222,6 +222,36 @@ PARAMETROS_CONTROLE = [
         str,
     ),
     Argumento(
+        'habilitar_exploracao_desconhecida',
+        'true',
+        'Permite usar A* para ir ate fronteiras desconhecidas apos timeout',
+        bool,
+    ),
+    Argumento(
+        'timeout_exploracao_desconhecida',
+        '120.0',
+        'Tempo sem ver bandeira antes de buscar uma fronteira desconhecida',
+        float,
+    ),
+    Argumento(
+        'intervalo_exploracao_desconhecida',
+        '45.0',
+        'Cooldown entre tentativas de exploracao por fronteira',
+        float,
+    ),
+    Argumento(
+        'distancia_minima_alvo_desconhecido',
+        '1.0',
+        'Distancia minima ate a fronteira desconhecida escolhida',
+        float,
+    ),
+    Argumento(
+        'max_candidatos_exploracao_desconhecida',
+        '80',
+        'Numero maximo de fronteiras testadas ate achar um A* valido',
+        int,
+    ),
+    Argumento(
         'fov_horizontal_camera',
         '1.57',
         'Campo de visao horizontal da camera em radianos',

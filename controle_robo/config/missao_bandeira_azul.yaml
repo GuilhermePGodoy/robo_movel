@@ -9,7 +9,7 @@
 launch:
   # Mundo carregado pelo pacote robo_movel.
   # Opcoes usuais: arena_cilindros.sdf, empty_arena.sdf, arena_paredes.sdf.
-  world: arena_cilindros.sdf
+  world: arena_paredes.sdf
 
   # Todos os nos usam o relogio da simulacao.
   use_sim_time: true
@@ -56,7 +56,7 @@ controle_robo:
     # Velocidade linear quando o robo ainda esta procurando a bandeira.
     velocidade_exploracao: 0.4
     # Velocidade linear no ajuste fino perto da haste da bandeira.
-    velocidade_posicionamento: 0.08
+    velocidade_posicionamento: 0.2
     # Acima desta distancia frontal, a exploracao pode acelerar um pouco.
     distancia_velocidade_livre: 1.8
     # Multiplicador aplicado quando a frente esta livre.
@@ -113,6 +113,18 @@ controle_robo:
     # ----------------------------
     # Ativa o uso de /grid_map e A* para chegar perto da bandeira/base.
     usar_planejamento_grade: true
+    # Recuperação para mapas tipo labirinto: se o robô passar muito tempo sem
+    # ver a bandeira, usa A* para ir até uma fronteira entre mapa livre e mapa
+    # desconhecido. Na arena comum quase nunca ativa, porque a câmera vê a
+    # bandeira antes do timeout.
+    habilitar_exploracao_desconhecida: true
+    timeout_exploracao_desconhecida: 60.0
+    # Cooldown entre tentativas para o robô não ficar preso só nessa rotina.
+    intervalo_exploracao_desconhecida: 45.0
+    # Evita escolher uma célula desconhecida colada no robô.
+    distancia_minima_alvo_desconhecido: 1.0
+    # Quantas fronteiras candidatas testar até achar uma que tenha caminho A*.
+    max_candidatos_exploracao_desconhecida: 80
     # Campo de visao horizontal da camera, usado na trigonometria da bandeira.
     fov_horizontal_camera: 1.57
     # Medidas aproximadas do blob semantico da bandeira na simulacao.

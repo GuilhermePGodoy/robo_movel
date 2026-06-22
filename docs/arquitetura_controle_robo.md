@@ -146,6 +146,8 @@ BANDEIRA_DETECTADA
 ESTIMANDO_POSICAO_BANDEIRA
 PLANEJANDO_PARA_BANDEIRA
 SEGUINDO_CAMINHO_PARA_BANDEIRA
+PLANEJANDO_EXPLORACAO_DESCONHECIDA
+SEGUINDO_CAMINHO_EXPLORACAO
 DESVIANDO_OBSTACULO
 REPLANEJANDO_CAMINHO
 FALHA_PLANEJAMENTO
@@ -179,6 +181,12 @@ Estados de recuperação:
 - `DESVIANDO_OBSTACULO` pode interromper quase qualquer estado de movimento.
   Ao sair do desvio, a máquina tenta voltar ao que fazia antes: replanejar
   rota, retomar posicionamento visual ou continuar buscando.
+- `PLANEJANDO_EXPLORACAO_DESCONHECIDA` e
+  `SEGUINDO_CAMINHO_EXPLORACAO` são uma recuperação para mapas em que a
+  bandeira fica escondida. Se o robô fica muito tempo sem ver a bandeira, ele
+  escolhe uma fronteira do mapa: uma célula desconhecida encostada em região
+  livre conhecida. O A* leva o robô até essa borda para revelar uma nova parte
+  da arena, e depois a exploração visual normal continua.
 - `REENCONTRANDO_BANDEIRA` é usado quando um desvio perto da coleta tira a
   bandeira do centro da câmera. O robô gira parado para reenquadrar a bandeira
   antes de estimar uma nova posição ou voltar ao A*.
@@ -226,6 +234,8 @@ Cada grupo do YAML tem comentários. Em geral:
 - parâmetros visuais mexem em detecção, alinhamento e captura;
 - parâmetros de A* mexem em custo, inflação, folga perto de obstáculo,
   tolerâncias e velocidade;
+- parâmetros de exploração desconhecida controlam o timeout, o cooldown e a
+  escolha de fronteiras quando a bandeira não aparece por muito tempo;
 - parâmetros da garra mexem na abertura e na altura da haste;
 - parâmetros de launch mexem em mundo, atrasos e nomes de tópicos.
 
