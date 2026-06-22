@@ -1,4 +1,4 @@
-# Trabalho 1 - Sistema Autônomo de Captura da Bandeira Azul
+# Trabalho 2 - Sistema Autônomo de Captura da Bandeira Azul
 
 ## Objetivo
 

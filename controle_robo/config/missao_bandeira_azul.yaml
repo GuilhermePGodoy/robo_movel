@@ -43,7 +43,7 @@ controle_robo:
     angulo_frontal_graus: 30.0
     # Depois da captura, a bandeira aparece no centro do LIDAR; esta janela
     # central e ignorada somente durante o retorno para a base.
-    angulo_ignorar_lidar_garra_graus: 8.0
+    angulo_ignorar_lidar_garra_graus: 12.0
     # Janela central estreita usada para decidir se a haste esta perto da garra.
     # Obstaculos no canto do cone frontal nao devem fechar a garra antes da hora.
     angulo_lidar_coleta_graus: 5.0
@@ -56,7 +56,7 @@ controle_robo:
     # Velocidade linear quando o robo ainda esta procurando a bandeira.
     velocidade_exploracao: 0.4
     # Velocidade linear no ajuste fino perto da haste da bandeira.
-    velocidade_posicionamento: 0.2
+    velocidade_posicionamento: 0.15
     # Acima desta distancia frontal, a exploracao pode acelerar um pouco.
     distancia_velocidade_livre: 1.8
     # Multiplicador aplicado quando a frente esta livre.

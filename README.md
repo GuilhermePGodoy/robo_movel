@@ -1,6 +1,6 @@
-# Trabalho 1 - Robô Móvel Autônomo com ROS 2
+# Trabalho 2 - Robô Móvel Autônomo com ROS 2
 
-Projeto desenvolvido para o Trabalho Avaliado 1 de Programação de Robôs
+Projeto desenvolvido para o Trabalho Avaliado 2 de Programação de Robôs
 Móveis. O sistema usa ROS 2 Jazzy e Gazebo Sim para simular um robô
 diferencial que explora a arena, detecta a bandeira azul por câmera de
 segmentação semântica, estima a posição da bandeira no mapa, planeja caminhos
@@ -9,7 +9,7 @@ base inicial.
 
 Material de apresentação:
 [slides em PowerPoint](docs/robo_movel_algoritmo_ensino_medio.pptx) e
-[roteiro em Markdown](docs/apresentacao_trabalho1.md).
+[roteiro em Markdown](docs/apresentacao_trabalho2.md).
 
 Para entender a organização interna do controle, veja também a
 [documentação de arquitetura](docs/arquitetura_controle_robo.md).

@@ -1233,16 +1233,27 @@ class MaquinaEstadosMissao:
             )
             return False
 
-        # Se a haste esta centralizada, a bandeira ja esta grande na imagem e
-        # o LIDAR so acusa algo na faixa central estreita, o "obstaculo" mais
-        # provavel e a propria haste. Nesse caso seguimos aproximando; se
-        # tambem houver obstaculo fora do centro, ai sim desviamos.
-        alvo_central_em_aproximacao = (
+        # Se a haste esta centralizada e a bandeira ja esta grande na imagem,
+        # o alvo da garra e justamente o objeto que aparece no LIDAR. Quando a
+        # bandeira e vista de lado, alguns raios fora do centro tambem batem
+        # nela. Entao so desviamos se a leitura fora do centro estiver
+        # claramente mais perto que a leitura central de coleta.
+        alvo_visual_alinhado = (
             self.bandeira_parcial_visivel()
             and abs(self.erro_x_haste()) <= robo.erro_alinhamento_bandeira
             and det.area_relativa >= robo.area_coleta_bandeira
             and math.isfinite(robo.distancia_frontal_coleta)
-            and not robo.obstaculo_a_frente_sem_centro
+        )
+        margem_mesmo_alvo = max(0.12, 0.25 * robo.distancia_obstaculo)
+        fora_do_centro_compativel_com_alvo = (
+            not robo.obstaculo_a_frente_sem_centro
+            or math.isinf(robo.distancia_frontal_sem_centro)
+            or robo.distancia_frontal_sem_centro
+            >= robo.distancia_frontal_coleta - margem_mesmo_alvo
+        )
+        alvo_central_em_aproximacao = (
+            alvo_visual_alinhado
+            and fora_do_centro_compativel_com_alvo
         )
         if alvo_central_em_aproximacao:
             robo.log_periodico(
@@ -1252,6 +1263,7 @@ class MaquinaEstadosMissao:
                     f'frente={robo.formatar_distancia(robo.distancia_frontal)}, '
                     f'fr_coleta={robo.formatar_distancia(robo.distancia_frontal_coleta)}, '
                     f'fr_sem_centro={robo.formatar_distancia(robo.distancia_frontal_sem_centro)}, '
+                    f'margem={margem_mesmo_alvo:.2f}m, '
                     f'area={det.area_relativa:.3f}, '
                     f'area_coleta={robo.area_coleta_bandeira:.3f}, '
                     f'erro_haste={det.erro_x_haste:+.2f} | '
