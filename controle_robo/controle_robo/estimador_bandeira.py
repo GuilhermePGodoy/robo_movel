@@ -24,6 +24,10 @@ class EstimadorBandeira:
         distancia_minima: float,
         distancia_maxima: float,
         tamanho_historico: int,
+        fill_ratio_minimo: float = 0.15,
+        fill_ratio_maximo: float = 0.82,
+        proporcao_minima_bbox: float = 0.20,
+        proporcao_maxima_bbox: float = 1.35,
     ):
         self.fov_horizontal_camera = float(fov_horizontal_camera)
         self.largura_real_bandeira = float(largura_real_bandeira)
@@ -31,11 +35,17 @@ class EstimadorBandeira:
         self.distancia_minima = float(distancia_minima)
         self.distancia_maxima = float(distancia_maxima)
         self.historico = deque(maxlen=max(1, int(tamanho_historico)))
+        self.fill_ratio_minimo = float(fill_ratio_minimo)
+        self.fill_ratio_maximo = float(fill_ratio_maximo)
+        self.proporcao_minima_bbox = float(proporcao_minima_bbox)
+        self.proporcao_maxima_bbox = float(proporcao_maxima_bbox)
 
     def estimar(self, det, x_robo, y_robo, yaw_robo, distancia_frontal):
         if not det.visivel or det.altura <= 0 or det.largura <= 0:
             return EstimativaBandeira(instante=time.monotonic())
         if det.largura_imagem <= 0 or det.altura_imagem <= 0:
+            return EstimativaBandeira(instante=time.monotonic())
+        if not self.bbox_boa_para_estimativa(det):
             return EstimativaBandeira(instante=time.monotonic())
 
         fx = self.focal_pixels(det.largura_imagem)
@@ -103,6 +113,28 @@ class EstimadorBandeira:
 
     def focal_pixels(self, largura_imagem):
         return largura_imagem / (2.0 * math.tan(self.fov_horizontal_camera / 2.0))
+
+    def bbox_boa_para_estimativa(self, det):
+        """Filtra recortes que nao representam a bandeira inteira.
+
+        Quando a camera ve so o pano ou so a haste, a bbox fica quase toda
+        preenchida por azul. Se usarmos essa altura pequena na trigonometria,
+        a distancia estimada vai para longe demais. Uma bandeira completa tem
+        buracos/recortes dentro da bbox e uma proporcao menos extrema.
+        """
+
+        area_bbox = float(det.largura * det.altura)
+        if area_bbox <= 0.0:
+            return False
+
+        fill_ratio = det.area / area_bbox
+        proporcao = det.largura / float(det.altura)
+        return (
+            self.fill_ratio_minimo <= fill_ratio <= self.fill_ratio_maximo
+            and self.proporcao_minima_bbox
+            <= proporcao
+            <= self.proporcao_maxima_bbox
+        )
 
     @staticmethod
     def centro_x_para_estimativa(det):

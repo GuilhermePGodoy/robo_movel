@@ -69,6 +69,10 @@ class ControleRobo(Node):
             self.distancia_minima_estimativa,
             self.distancia_maxima_estimativa,
             self.historico_estimativas_bandeira,
+            self.fill_ratio_minimo_estimativa,
+            self.fill_ratio_maximo_estimativa,
+            self.proporcao_minima_bbox_estimativa,
+            self.proporcao_maxima_bbox_estimativa,
         )
         self.planejador_grade = PlanejadorGrade(
             self.custo_desconhecido,
@@ -131,6 +135,7 @@ class ControleRobo(Node):
 
         self.declare_parameter('velocidade_angular_desvio', -0.4)
         self.declare_parameter('distancia_obstaculo', 0.6)
+        self.declare_parameter('distancia_obstaculo_retorno', 0.8)
         self.declare_parameter('angulo_frontal_graus', 30.0)
         self.declare_parameter('angulo_ignorar_lidar_garra_graus', 8.0)
         self.declare_parameter('angulo_lidar_coleta_graus', 5.0)
@@ -169,6 +174,10 @@ class ControleRobo(Node):
         self.declare_parameter('altura_real_bandeira', 0.48)
         self.declare_parameter('distancia_minima_estimativa', 0.2)
         self.declare_parameter('distancia_maxima_estimativa', 10.0)
+        self.declare_parameter('fill_ratio_minimo_estimativa', 0.15)
+        self.declare_parameter('fill_ratio_maximo_estimativa', 0.82)
+        self.declare_parameter('proporcao_minima_bbox_estimativa', 0.20)
+        self.declare_parameter('proporcao_maxima_bbox_estimativa', 1.35)
         self.declare_parameter('confianca_minima_planejamento', 0.35)
         self.declare_parameter('historico_estimativas_bandeira', 5)
         self.declare_parameter('custo_desconhecido', 3.0)
@@ -177,6 +186,8 @@ class ControleRobo(Node):
         self.declare_parameter('tolerancia_waypoint', 0.25)
         self.declare_parameter('tolerancia_alvo_planejado', 0.6)
         self.declare_parameter('ganho_angular_waypoint', 1.0)
+        self.declare_parameter('distancia_lookahead_waypoint', 0.65)
+        self.declare_parameter('peso_orientacao_inicial', 1.5)
         self.declare_parameter('velocidade_seguindo_caminho', 0.32)
         self.declare_parameter('deslocamento_replanejamento_alvo', 1.5)
         self.declare_parameter('intervalo_minimo_replanejamento_visual', 3.0)
@@ -190,6 +201,9 @@ class ControleRobo(Node):
         ))
         self.distancia_obstaculo = float(
             self.get_parameter('distancia_obstaculo').value
+        )
+        self.distancia_obstaculo_retorno = float(
+            self.get_parameter('distancia_obstaculo_retorno').value
         )
         self.angulo_frontal_graus = float(
             self.get_parameter('angulo_frontal_graus').value
@@ -312,6 +326,18 @@ class ControleRobo(Node):
         self.distancia_maxima_estimativa = float(
             self.get_parameter('distancia_maxima_estimativa').value
         )
+        self.fill_ratio_minimo_estimativa = float(
+            self.get_parameter('fill_ratio_minimo_estimativa').value
+        )
+        self.fill_ratio_maximo_estimativa = float(
+            self.get_parameter('fill_ratio_maximo_estimativa').value
+        )
+        self.proporcao_minima_bbox_estimativa = float(
+            self.get_parameter('proporcao_minima_bbox_estimativa').value
+        )
+        self.proporcao_maxima_bbox_estimativa = float(
+            self.get_parameter('proporcao_maxima_bbox_estimativa').value
+        )
         self.confianca_minima_planejamento = float(
             self.get_parameter('confianca_minima_planejamento').value
         )
@@ -335,6 +361,12 @@ class ControleRobo(Node):
         )
         self.ganho_angular_waypoint = float(
             self.get_parameter('ganho_angular_waypoint').value
+        )
+        self.distancia_lookahead_waypoint = float(
+            self.get_parameter('distancia_lookahead_waypoint').value
+        )
+        self.peso_orientacao_inicial = float(
+            self.get_parameter('peso_orientacao_inicial').value
         )
         self.velocidade_seguindo_caminho = float(
             self.get_parameter('velocidade_seguindo_caminho').value
@@ -527,14 +559,24 @@ class ControleRobo(Node):
 
         delta_pose = math.hypot(self.x - x_referencia, self.y - y_referencia)
         delta_yaw = self.normalizar_angulo(self.yaw - yaw_referencia)
+        area_bbox = float(det.largura * det.altura)
+        fill_ratio = det.area / area_bbox if area_bbox > 0.0 else 0.0
+        proporcao_bbox = (
+            det.largura / float(det.altura)
+            if det.altura > 0
+            else 0.0
+        )
 
         self.log_periodico(
             'estimativa_bandeira',
             (
                 'ESTIMATIVA | alvo=bandeira | '
+                f'valida={est.valida} | '
                 f'dist={est.distancia:.2f}m, '
                 f'ang={est.angulo_relativo:+.2f}rad, '
                 f'alvo=({est.x:.2f}, {est.y:.2f}), '
+                f'bbox={det.largura}x{det.altura}, '
+                f'fill={fill_ratio:.2f}, prop={proporcao_bbox:.2f}, '
                 f'pose_ref=({x_referencia:.2f}, {y_referencia:.2f}, '
                 f'yaw={yaw_referencia:.2f}), '
                 f'delta_pose={delta_pose:.2f}m, '
@@ -728,6 +770,9 @@ class ControleRobo(Node):
             self.mapa_grade,
             (self.x, self.y),
             alvo_xy,
+            yaw_inicial=self.yaw,
+            peso_orientacao_inicial=self.peso_orientacao_inicial,
+            distancia_orientacao_inicial=self.distancia_lookahead_waypoint,
         )
         if not resultado.sucesso:
             self.limpar_caminho()
@@ -778,45 +823,69 @@ class ControleRobo(Node):
                 break
             self.indice_waypoint += 1
 
-    def pular_waypoint_ruim_no_retorno(self):
-        """Evita giro puro em waypoint muito perto durante o retorno.
+    def waypoint_de_seguimento(self):
+        """Escolhe um ponto um pouco a frente ao longo do caminho.
 
-        Quando o waypoint esta muito perto e quase atras do robo, e mais estavel seguir para o
-        proximo ponto do caminho.
+        O indice do caminho continua apontando para o primeiro waypoint ainda
+        nao alcancado. Para o controle de velocidade, porem, mirar alguns
+        centimetros a frente reduz giros puros causados por pontos muito
+        proximos sem simplesmente cortar para um waypoint distante.
         """
 
         self.pular_waypoints_proximos()
         if not self.caminho_ativo():
             return None
 
-        # Nao pula o ultimo ponto: a chegada na base e decidida por
-        # chegou_na_base(), entao o final do caminho ainda precisa existir.
-        if self.indice_waypoint >= len(self.caminho_planejado) - 1:
-            return None
+        lookahead = max(
+            self.tolerancia_waypoint,
+            self.distancia_lookahead_waypoint,
+        )
+        ultimo_indice = len(self.caminho_planejado) - 1
+        primeiro = self.caminho_planejado[self.indice_waypoint]
+        distancia_ate_primeiro = math.hypot(
+            primeiro[0] - self.x,
+            primeiro[1] - self.y,
+        )
 
-        wx, wy = self.waypoint_atual()
-        dx = wx - self.x
-        dy = wy - self.y
-        distancia = math.hypot(dx, dy)
-        alvo_yaw = math.atan2(dy, dx)
-        erro_yaw = self.normalizar_angulo(alvo_yaw - self.yaw)
+        if (
+            distancia_ate_primeiro >= lookahead
+            or self.indice_waypoint == ultimo_indice
+        ):
+            return self.indice_waypoint, primeiro
 
-        distancia_ruim = max(0.40, 2.0 * self.tolerancia_waypoint)
-        giro_ruim = 1.4
-        if distancia > distancia_ruim or abs(erro_yaw) < giro_ruim:
-            return None
+        distancia_restante = lookahead - distancia_ate_primeiro
+        anterior = primeiro
+        for indice in range(
+            self.indice_waypoint + 1,
+            len(self.caminho_planejado),
+        ):
+            atual = self.caminho_planejado[indice]
+            dx = atual[0] - anterior[0]
+            dy = atual[1] - anterior[1]
+            tamanho_segmento = math.hypot(dx, dy)
+            if tamanho_segmento <= 1e-9:
+                anterior = atual
+                continue
 
-        indice_pulado = self.indice_waypoint
-        self.indice_waypoint += 1
-        self.publicar_caminho_planejado()
-        return indice_pulado, distancia, erro_yaw
+            if distancia_restante <= tamanho_segmento:
+                fator = distancia_restante / tamanho_segmento
+                ponto = (
+                    anterior[0] + fator * dx,
+                    anterior[1] + fator * dy,
+                )
+                return indice, ponto
+
+            distancia_restante -= tamanho_segmento
+            anterior = atual
+
+        return ultimo_indice, self.caminho_planejado[ultimo_indice]
 
     def comando_para_waypoint(self, distancia_frontal=None):
-        self.pular_waypoints_proximos()
-        waypoint = self.waypoint_atual()
-        if waypoint is None:
+        alvo_seguimento = self.waypoint_de_seguimento()
+        if alvo_seguimento is None:
             return None
 
+        indice_alvo, waypoint = alvo_seguimento
         wx, wy = waypoint
         dx = wx - self.x
         dy = wy - self.y
@@ -839,7 +908,7 @@ class ControleRobo(Node):
             * fator_alinhamento
             * self.fator_velocidade_por_distancia(distancia_frontal)
         )
-        return linear, angular, distancia, erro_yaw
+        return linear, angular, distancia, erro_yaw, indice_alvo
 
     def waypoint_bloqueado(self):
         self.ultimo_waypoint_bloqueado_final = False

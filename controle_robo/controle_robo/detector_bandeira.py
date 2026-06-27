@@ -131,14 +131,6 @@ class DetectorBandeira(Node):
         if self.publicar_mascara_debug:
             self.publicar_mascara(mask, msg)
 
-        self.publicar_debug_info(
-            pixels_mascara=pixels_mascara,
-            total_contornos=len(contornos),
-            contornos_validos=len(contornos_validos),
-            maior_area=maior_area,
-            largura=largura,
-            altura=altura,
-        )
         self.log_debug_frame(
             frame=frame,
             encoding=msg.encoding,
@@ -151,6 +143,14 @@ class DetectorBandeira(Node):
 
         if not contornos_validos:
             self.publicar_sem_deteccao(
+                largura=largura,
+                altura=altura,
+            )
+            self.publicar_debug_info(
+                pixels_mascara=pixels_mascara,
+                total_contornos=len(contornos),
+                contornos_validos=len(contornos_validos),
+                maior_area=maior_area,
                 largura=largura,
                 altura=altura,
             )
@@ -175,6 +175,22 @@ class DetectorBandeira(Node):
         area = cv2.contourArea(maior_contorno)
         x, y, w, h = cv2.boundingRect(maior_contorno)
         momentos = cv2.moments(maior_contorno)
+        area_bbox = float(max(1, w * h))
+        fill_ratio = area / area_bbox
+        proporcao_bbox = w / float(h) if h > 0 else 0.0
+
+        self.publicar_debug_info(
+            pixels_mascara=pixels_mascara,
+            total_contornos=len(contornos),
+            contornos_validos=len(contornos_validos),
+            maior_area=maior_area,
+            largura=largura,
+            altura=altura,
+            largura_box=w,
+            altura_box=h,
+            fill_ratio=fill_ratio,
+            proporcao_bbox=proporcao_bbox,
+        )
 
         if momentos['m00'] != 0:
             centro_x = momentos['m10'] / momentos['m00']
@@ -217,7 +233,9 @@ class DetectorBandeira(Node):
                 f'cx={centro_x:.0f}/{largura}, erro={erro_x:+.2f}, '
                 f'haste_x={centro_x_haste:.0f}, '
                 f'erro_haste={erro_x_haste:+.2f}, '
-                f'area={area:.0f}px/{area_relativa:.3f}'
+                f'area={area:.0f}px/{area_relativa:.3f}, '
+                f'bbox={w}x{h}, fill={fill_ratio:.2f}, '
+                f'prop={proporcao_bbox:.2f}'
             ),
             periodo=1.0,
         )
@@ -305,6 +323,10 @@ class DetectorBandeira(Node):
         maior_area: float,
         largura: int,
         altura: int,
+        largura_box: int = 0,
+        altura_box: int = 0,
+        fill_ratio: float = 0.0,
+        proporcao_bbox: float = 0.0,
     ):
         if not self.debug_detector:
             return
@@ -319,6 +341,10 @@ class DetectorBandeira(Node):
             float(self.area_minima_bandeira),
             float(largura),
             float(altura),
+            float(largura_box),
+            float(altura_box),
+            float(fill_ratio),
+            float(proporcao_bbox),
         ]
         self.debug_info_pub.publish(msg)
 

@@ -38,7 +38,10 @@ controle_robo:
     # Velocidade angular base das manobras de desvio.
     velocidade_angular_desvio: -0.4
     # Distancia frontal minima para considerar que ha obstaculo.
-    distancia_obstaculo: 0.6
+    distancia_obstaculo: 0.65
+    # Durante o retorno, o robo esta carregando a bandeira e precisa reagir um
+    # pouco antes para manobrar sem encostar a garra/haste nos obstaculos.
+    distancia_obstaculo_retorno: 0.75
     # Setor frontal do LaserScan, em graus, usado para medir obstaculos.
     angulo_frontal_graus: 30.0
     # Depois da captura, a bandeira aparece no centro do LIDAR; esta janela
@@ -133,6 +136,14 @@ controle_robo:
     # Faixa valida da estimativa visual. Leituras fora disso viram suspeitas.
     distancia_minima_estimativa: 0.2
     distancia_maxima_estimativa: 10.0
+    # Qualidade minima da bbox antes de usar trigonometria. Fill ratio muito
+    # alto costuma indicar que a camera viu so o pano ou so a haste.
+    fill_ratio_minimo_estimativa: 0.05
+    fill_ratio_maximo_estimativa: 0.82
+    # Proporcao largura/altura plausivel para a bandeira completa. Valores
+    # extremos tambem costumam ser recortes parciais.
+    proporcao_minima_bbox_estimativa: 0.10
+    proporcao_maxima_bbox_estimativa: 0.70
     # Confianca minima para transformar uma deteccao visual em alvo do A*.
     confianca_minima_planejamento: 0.35
     # Numero de estimativas recentes usadas na media movel da bandeira.
@@ -149,12 +160,18 @@ controle_robo:
     tolerancia_alvo_planejado: 0.6
     # Ganho angular e velocidade linear nominal ao seguir waypoints.
     ganho_angular_waypoint: 1.0
+    # Distancia minima do ponto mirado no caminho. Em vez de mirar sempre no
+    # proximo waypoint curto, o robo olha um pouco adiante e evita giros secos.
+    distancia_lookahead_waypoint: 0.65
+    # Peso para o A* preferir, nos primeiros passos, rotas alinhadas com o yaw
+    # atual do robo. Se ficar teimoso demais, reduza para perto de 0.
+    peso_orientacao_inicial: 4.0
     velocidade_seguindo_caminho: 0.32
     # Replaneja quando a camera muda bastante a estimativa da bandeira.
     deslocamento_replanejamento_alvo: 1.5
     intervalo_minimo_replanejamento_visual: 3.0
     # O A* mira um ponto antes da bandeira para nao colidir com a haste.
-    distancia_aproximacao_bandeira: 0.55
+    distancia_aproximacao_bandeira: 0.0
 
     # ----------------------------
     # Criterios de "bandeira inteira"
@@ -176,6 +193,6 @@ controle_robo:
     # Tolerancia usada somente no fallback por colored_map.
     tolerancia_cor_bandeira: 0.0
     # Ative quando quiser investigar mascara, contornos e labels da camera.
-    debug_detector: false
-    publicar_mascara_debug: false
+    debug_detector: true
+    publicar_mascara_debug: true
     periodo_log_debug: 1.0

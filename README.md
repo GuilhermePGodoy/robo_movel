@@ -187,8 +187,18 @@ Os logs do nó `controle_do_robo` informam transições de estado, motivo da
 transição, erro visual da bandeira, distância frontal e comandos de velocidade.
 Os logs do `detector_bandeira` informam encoding, formato da imagem, labels
 mais comuns, quantidade de pixels da label `25`, contornos encontrados e maior
-área. No `/bandeira_azul/debug_mask`, pixels brancos indicam onde o detector
-enxerga a bandeira azul.
+área. Quando a bandeira é detectada, o log `CAMERA | bandeira=sim` também
+mostra `bbox`, `fill` e `prop`, usados para decidir se a bbox é boa o bastante
+para estimar a posição no mapa. No `/bandeira_azul/debug_mask`, pixels brancos
+indicam onde o detector enxerga a bandeira azul.
+
+Com `debug_detector: true`, `/bandeira_azul/debug_info` publica:
+
+```text
+[label, pixels_label, contornos, contornos_validos, maior_area,
+ area_minima, largura_img, altura_img, largura_bbox, altura_bbox,
+ fill_ratio, proporcao_bbox]
+```
 
 ## Observações
 

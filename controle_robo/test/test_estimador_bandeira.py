@@ -30,9 +30,11 @@ def deteccao(
     centro_x=160,
     centro_y=120,
     centro_x_haste=None,
+    fill_ratio=0.55,
 ):
     if centro_x_haste is None:
         centro_x_haste = centro_x
+    area = altura * largura * fill_ratio
 
     return DeteccaoBandeira(
         visivel=True,
@@ -41,8 +43,8 @@ def deteccao(
         erro_x=(centro_x - 160) / 160,
         centro_x_haste=centro_x_haste,
         erro_x_haste=(centro_x_haste - 160) / 160,
-        area=altura * largura,
-        area_relativa=(altura * largura) / (320 * 240),
+        area=area,
+        area_relativa=area / (320 * 240),
         largura=largura,
         altura=altura,
         largura_imagem=320,
@@ -148,3 +150,35 @@ def test_estimativa_mira_na_haste_nao_no_centro_do_pano():
     )
 
     assert abs(estimativa.y) < 0.05
+
+
+def test_estimativa_rejeita_bbox_solida_demais():
+    estimativa = criar_estimador().estimar(
+        deteccao(
+            altura=40,
+            largura=80,
+            fill_ratio=0.95,
+        ),
+        0.0,
+        0.0,
+        0.0,
+        float('inf'),
+    )
+
+    assert not estimativa.valida
+
+
+def test_estimativa_rejeita_bbox_estreita_demais():
+    estimativa = criar_estimador().estimar(
+        deteccao(
+            altura=90,
+            largura=8,
+            fill_ratio=0.55,
+        ),
+        0.0,
+        0.0,
+        0.0,
+        float('inf'),
+    )
+
+    assert not estimativa.valida

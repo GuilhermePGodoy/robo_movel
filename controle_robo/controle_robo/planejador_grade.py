@@ -71,7 +71,15 @@ class PlanejadorGrade:
             float(custo_adjacente_obstaculo),
         )
 
-    def planejar(self, mapa_msg, inicio_xy, alvo_xy):
+    def planejar(
+        self,
+        mapa_msg,
+        inicio_xy,
+        alvo_xy,
+        yaw_inicial=None,
+        peso_orientacao_inicial=0.0,
+        distancia_orientacao_inicial=0.0,
+    ):
         mapa = MapaGrade(mapa_msg)
         inicio = mapa.world_to_grid(*inicio_xy)
         alvo = mapa.world_to_grid(*alvo_xy)
@@ -110,6 +118,9 @@ class PlanejadorGrade:
             destino,
             bloqueadas,
             adjacentes_obstaculo,
+            yaw_inicial,
+            peso_orientacao_inicial,
+            distancia_orientacao_inicial,
         )
         if not caminho:
             return ResultadoPlanejamento(
@@ -213,6 +224,9 @@ class PlanejadorGrade:
         destino,
         bloqueadas,
         adjacentes_obstaculo,
+        yaw_inicial,
+        peso_orientacao_inicial,
+        distancia_orientacao_inicial,
     ):
         fronteira = []
         contador = 0
@@ -238,6 +252,14 @@ class PlanejadorGrade:
                         mapa,
                         vizinha,
                         adjacentes_obstaculo,
+                    )
+                    + self.custo_orientacao_inicial(
+                        mapa,
+                        inicio,
+                        vizinha,
+                        yaw_inicial,
+                        peso_orientacao_inicial,
+                        distancia_orientacao_inicial,
                     )
                 )
                 if novo_custo >= custo_ate.get(vizinha, math.inf):
@@ -275,9 +297,48 @@ class PlanejadorGrade:
 
         return custo
 
+    def custo_orientacao_inicial(
+        self,
+        mapa,
+        inicio,
+        celula,
+        yaw_inicial,
+        peso,
+        distancia_limite,
+    ):
+        """Da preferencia aos primeiros passos na direcao atual do robo.
+
+        O A* continua partindo da celula real do robo. A diferenca e que,
+        quando existem rotas equivalentes, os primeiros metros recebem custo
+        menor se apontam para onde o robo ja esta virado. Isso evita que o
+        retorno com a bandeira comece com um giro puro para um waypoint curto.
+        """
+
+        if yaw_inicial is None or peso <= 0.0 or distancia_limite <= 0.0:
+            return 0.0
+
+        dx = (celula.x - inicio.x) * mapa.resolution
+        dy = (celula.y - inicio.y) * mapa.resolution
+        distancia = math.hypot(dx, dy)
+        if distancia <= 1e-9 or distancia > distancia_limite:
+            return 0.0
+
+        angulo = math.atan2(dy, dx)
+        erro = abs(self.normalizar_angulo(angulo - yaw_inicial))
+        peso_distancia = 1.0 - (distancia / distancia_limite)
+        return (
+            float(peso)
+            * (erro / math.pi) ** 2
+            * (0.5 + 0.5 * peso_distancia)
+        )
+
     @staticmethod
     def heuristica(a, b):
         return math.hypot(a.x - b.x, a.y - b.y)
+
+    @staticmethod
+    def normalizar_angulo(angulo):
+        return math.atan2(math.sin(angulo), math.cos(angulo))
 
     @staticmethod
     def reconstruir_caminho(veio_de, atual):

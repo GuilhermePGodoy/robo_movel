@@ -54,6 +54,12 @@ PARAMETROS_CONTROLE = [
         float,
     ),
     Argumento(
+        'distancia_obstaculo_retorno',
+        '0.8',
+        'Distancia minima para desvio ao voltar carregando a bandeira',
+        float,
+    ),
+    Argumento(
         'angulo_frontal_graus',
         '30.0',
         'Abertura do setor frontal analisado no LIDAR',
@@ -282,6 +288,30 @@ PARAMETROS_CONTROLE = [
         float,
     ),
     Argumento(
+        'fill_ratio_minimo_estimativa',
+        '0.15',
+        'Preenchimento minimo da bbox para aceitar estimativa por trigonometria',
+        float,
+    ),
+    Argumento(
+        'fill_ratio_maximo_estimativa',
+        '0.82',
+        'Preenchimento maximo da bbox; acima disso costuma ser so pano/haste',
+        float,
+    ),
+    Argumento(
+        'proporcao_minima_bbox_estimativa',
+        '0.20',
+        'Menor largura/altura da bbox aceita na estimativa visual',
+        float,
+    ),
+    Argumento(
+        'proporcao_maxima_bbox_estimativa',
+        '1.35',
+        'Maior largura/altura da bbox aceita na estimativa visual',
+        float,
+    ),
+    Argumento(
         'confianca_minima_planejamento',
         '0.35',
         'Confianca minima para transformar estimativa em caminho A*',
@@ -327,6 +357,18 @@ PARAMETROS_CONTROLE = [
         'ganho_angular_waypoint',
         '1.0',
         'Ganho angular do seguidor de waypoints',
+        float,
+    ),
+    Argumento(
+        'distancia_lookahead_waypoint',
+        '0.65',
+        'Distancia a frente usada para mirar no caminho A*',
+        float,
+    ),
+    Argumento(
+        'peso_orientacao_inicial',
+        '1.5',
+        'Peso para preferir inicio de rota alinhado com o yaw atual',
         float,
     ),
     Argumento(

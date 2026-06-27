@@ -394,12 +394,13 @@ class MaquinaEstadosMissao:
             )
             return
 
-        linear, angular, distancia, erro_yaw = comando
+        linear, angular, distancia, erro_yaw, indice_alvo = comando
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
                 'acao=seguir_astar_bandeira | '
-                f'wp={robo.indice_waypoint + 1}/{len(robo.caminho_planejado)}, '
+                f'wp={robo.indice_waypoint + 1}->{indice_alvo + 1}/'
+                f'{len(robo.caminho_planejado)}, '
                 f'dist_wp={distancia:.2f}m, erro_yaw={erro_yaw:+.2f}, '
                 f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
@@ -473,12 +474,13 @@ class MaquinaEstadosMissao:
             )
             return
 
-        linear, angular, distancia, erro_yaw = comando
+        linear, angular, distancia, erro_yaw, indice_alvo = comando
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
                 'acao=seguir_astar_desconhecido | '
-                f'wp={robo.indice_waypoint + 1}/{len(robo.caminho_planejado)}, '
+                f'wp={robo.indice_waypoint + 1}->{indice_alvo + 1}/'
+                f'{len(robo.caminho_planejado)}, '
                 f'dist_wp={distancia:.2f}m, erro_yaw={erro_yaw:+.2f}, '
                 f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
@@ -873,23 +875,6 @@ class MaquinaEstadosMissao:
             )
             return
 
-        waypoint_pulado = robo.pular_waypoint_ruim_no_retorno()
-        if waypoint_pulado is not None:
-            indice_pulado, distancia, erro_yaw = waypoint_pulado
-            self.log_estado_periodico(
-                (
-                    'acao=pular_waypoint_retorno | '
-                    f'wp_pulado={indice_pulado + 1}/'
-                    f'{len(robo.caminho_planejado)}, '
-                    f'dist_wp={distancia:.2f}m, '
-                    f'erro_yaw={erro_yaw:+.2f}, '
-                    'motivo=perto_demais_para_giro_puro_com_bandeira'
-                ),
-                periodo=0.2,
-            )
-            robo.publicar_velocidade(0.0, 0.0)
-            return
-
         comando = robo.comando_para_waypoint(self.distancia_frontal_ativa())
         if comando is None:
             self.trocar_estado(
@@ -898,12 +883,13 @@ class MaquinaEstadosMissao:
             )
             return
 
-        linear, angular, distancia, erro_yaw = comando
+        linear, angular, distancia, erro_yaw, indice_alvo = comando
         robo.publicar_velocidade(linear, angular)
         self.log_estado_periodico(
             (
                 'acao=seguir_astar_base | '
-                f'wp={robo.indice_waypoint + 1}/{len(robo.caminho_planejado)}, '
+                f'wp={robo.indice_waypoint + 1}->{indice_alvo + 1}/'
+                f'{len(robo.caminho_planejado)}, '
                 f'dist_wp={distancia:.2f}m, erro_yaw={erro_yaw:+.2f}, '
                 f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
@@ -1070,7 +1056,7 @@ class MaquinaEstadosMissao:
         )
 
     def frente_livre_para_avancar_no_desvio(self):
-        distancia_segura = self.robo.distancia_obstaculo + 0.18
+        distancia_segura = self.distancia_obstaculo_ativa() + 0.18
         distancia_frontal = self.distancia_frontal_ativa()
         return (
             math.isinf(distancia_frontal)
@@ -1078,10 +1064,18 @@ class MaquinaEstadosMissao:
         )
 
     def obstaculo_a_frente_ativo(self):
-        if self.ignorar_centro_lidar_por_bandeira():
-            return self.robo.obstaculo_a_frente_sem_centro
+        limite = self.distancia_obstaculo_ativa()
+        return (
+            self.distancia_frontal_ativa() < limite
+            or self.robo.distancia_direita < 0.35 * limite
+            or self.robo.distancia_esquerda < 0.35 * limite
+        )
 
-        return self.robo.obstaculo_a_frente
+    def distancia_obstaculo_ativa(self):
+        if self.usar_parametros_retorno_com_bandeira():
+            return self.robo.distancia_obstaculo_retorno
+
+        return self.robo.distancia_obstaculo
 
     def distancia_frontal_ativa(self):
         if self.ignorar_centro_lidar_por_bandeira():
@@ -1090,6 +1084,9 @@ class MaquinaEstadosMissao:
         return self.robo.distancia_frontal
 
     def ignorar_centro_lidar_por_bandeira(self):
+        return self.usar_parametros_retorno_com_bandeira()
+
+    def usar_parametros_retorno_com_bandeira(self):
         return (
             self.bandeira_capturada
             and self.estado_atual in (
@@ -1389,6 +1386,7 @@ class MaquinaEstadosMissao:
         return (
             'lidar('
             f'fr={robo.formatar_distancia(frente)}, '
+            f'lim={self.distancia_obstaculo_ativa():.2f}m, '
             f'esq={robo.formatar_distancia(robo.distancia_esquerda)}, '
             f'dir={robo.formatar_distancia(robo.distancia_direita)}, '
             f'desvio={robo.nome_lado_desvio()}'

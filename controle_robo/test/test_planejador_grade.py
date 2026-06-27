@@ -116,3 +116,29 @@ def test_inflacao_e_custo_suave_formam_duas_margens():
     assert Celula(1, 1) in adjacentes
     assert Celula(5, 5) in adjacentes
     assert Celula(3, 3) not in adjacentes
+
+
+def test_custo_orientacao_inicial_prefere_frente_do_robo():
+    planejador = PlanejadorGrade(inflacao_obstaculo_celulas=0)
+    grade = MapaGrade(mapa(5, 5, resolution=0.25))
+    inicio = Celula(2, 2)
+
+    custo_frente = planejador.custo_orientacao_inicial(
+        grade,
+        inicio,
+        Celula(3, 2),
+        yaw_inicial=0.0,
+        peso=2.0,
+        distancia_limite=1.0,
+    )
+    custo_atras = planejador.custo_orientacao_inicial(
+        grade,
+        inicio,
+        Celula(1, 2),
+        yaw_inicial=0.0,
+        peso=2.0,
+        distancia_limite=1.0,
+    )
+
+    assert custo_frente == pytest.approx(0.0)
+    assert custo_atras > custo_frente
