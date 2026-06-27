@@ -140,7 +140,13 @@ PARAMETROS_CONTROLE = [
     Argumento(
         'area_posicionamento_bandeira',
         '0.035',
-        'Area relativa minima para trocar A* por alinhamento visual',
+        'Area visual usada como referencia no ajuste fino da bandeira',
+        float,
+    ),
+    Argumento(
+        'distancia_posicionamento_bandeira',
+        '0.9',
+        'Distancia ate a estimativa para trocar A* por alinhamento visual',
         float,
     ),
     Argumento(

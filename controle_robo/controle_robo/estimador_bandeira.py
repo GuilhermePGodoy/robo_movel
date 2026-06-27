@@ -9,6 +9,7 @@ mas ainda refinada pela visao quando o robo chega perto.
 import math
 import time
 
+from controle_robo.criterios_visuais import bbox_tem_geometria_de_bandeira
 from controle_robo.modelos_missao import EstimativaBandeira
 
 
@@ -92,17 +93,12 @@ class EstimadorBandeira:
         buracos/recortes dentro da bbox e uma proporcao menos extrema.
         """
 
-        area_bbox = float(det.largura * det.altura)
-        if area_bbox <= 0.0:
-            return False
-
-        fill_ratio = det.area / area_bbox
-        proporcao = det.largura / float(det.altura)
-        return (
-            self.fill_ratio_minimo <= fill_ratio <= self.fill_ratio_maximo
-            and self.proporcao_minima_bbox
-            <= proporcao
-            <= self.proporcao_maxima_bbox
+        return bbox_tem_geometria_de_bandeira(
+            det,
+            self.fill_ratio_minimo,
+            self.fill_ratio_maximo,
+            self.proporcao_minima_bbox,
+            self.proporcao_maxima_bbox,
         )
 
     @staticmethod

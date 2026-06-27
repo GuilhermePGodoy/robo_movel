@@ -150,6 +150,7 @@ class ControleRobo(Node):
         self.declare_parameter('ganho_angular_bandeira', 0.9)
         self.declare_parameter('erro_alinhamento_bandeira', 0.12)
         self.declare_parameter('area_posicionamento_bandeira', 0.035)
+        self.declare_parameter('distancia_posicionamento_bandeira', 0.9)
         self.declare_parameter('area_coleta_bandeira', 0.07)
         self.declare_parameter('distancia_coleta_bandeira', 0.45)
         self.declare_parameter('tempo_perda_bandeira', 1.0)
@@ -257,6 +258,9 @@ class ControleRobo(Node):
         )
         self.area_posicionamento_bandeira = float(
             self.get_parameter('area_posicionamento_bandeira').value
+        )
+        self.distancia_posicionamento_bandeira = float(
+            self.get_parameter('distancia_posicionamento_bandeira').value
         )
         self.area_coleta_bandeira = float(
             self.get_parameter('area_coleta_bandeira').value
@@ -534,7 +538,7 @@ class ControleRobo(Node):
             periodo=1.0,
         )
 
-    def atualizar_estimativa_bandeira(self, preferir_maior_altura=False):
+    def calcular_estimativa_bandeira_atual(self):
         det = self.deteccao_bandeira
         if det.pose_robo_valida:
             x_referencia = det.x_robo
@@ -545,12 +549,64 @@ class ControleRobo(Node):
             y_referencia = self.y
             yaw_referencia = self.yaw
 
-        nova_estimativa = self.estimador_bandeira.estimar(
-            det,
+        estimativa = self.estimador_bandeira.estimar(
+            det, x_referencia, y_referencia, yaw_referencia,
+        )
+        return estimativa, x_referencia, y_referencia, yaw_referencia
+
+    def distancia_estimativa_bandeira_para_posicionamento(
+        self,
+        fixar_estimativa_atual=False,
+    ):
+        """Menor distancia ate a estimativa atual ou a melhor ja guardada."""
+
+        distancias = []
+        estimativa_atual, _, _, _ = self.calcular_estimativa_bandeira_atual()
+        if estimativa_atual.valida:
+            distancia_atual = math.hypot(
+                estimativa_atual.x - self.x,
+                estimativa_atual.y - self.y,
+            )
+            distancias.append(distancia_atual)
+            if (
+                fixar_estimativa_atual
+                and distancia_atual <= self.distancia_posicionamento_bandeira
+            ):
+                self.estimativa_bandeira = estimativa_atual
+                self.altura_melhor_estimativa_bandeira = (
+                    estimativa_atual.altura_bbox
+                )
+                self.publicar_alvo_estimado(estimativa_atual)
+                self.log_periodico(
+                    'estimativa_posicionamento_fixada',
+                    (
+                        'ESTIMATIVA | fixada=sim | motivo=posicionamento | '
+                        f'dist_robo={distancia_atual:.2f}m, '
+                        f'alvo=({estimativa_atual.x:.2f}, '
+                        f'{estimativa_atual.y:.2f}), '
+                        f'altura_bbox={estimativa_atual.altura_bbox}'
+                    ),
+                    periodo=0.8,
+                )
+        if self.estimativa_bandeira.valida:
+            distancias.append(math.hypot(
+                self.estimativa_bandeira.x - self.x,
+                self.estimativa_bandeira.y - self.y,
+            ))
+
+        if not distancias:
+            return math.inf
+
+        return min(distancias)
+
+    def atualizar_estimativa_bandeira(self, preferir_maior_altura=False):
+        det = self.deteccao_bandeira
+        (
+            nova_estimativa,
             x_referencia,
             y_referencia,
             yaw_referencia,
-        )
+        ) = self.calcular_estimativa_bandeira_atual()
 
         aceita = self.estimativa_deve_substituir_atual(
             nova_estimativa,

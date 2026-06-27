@@ -3,3 +3,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .~lock.*#
+
+# Testes locais/temporarios do pacote de controle.
+controle_robo/test/
+controle_robo/tests/

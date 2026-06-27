@@ -149,8 +149,10 @@ Alguns ajustes úteis:
   também para acionar o desvio caso algum objeto fique perto demais do lado.
 - `fator_velocidade_livre` e `fator_velocidade_proxima`: aceleração em caminho
   livre e redução de velocidade perto de obstáculos.
-- `area_posicionamento_bandeira`: área visual mínima para trocar o A* pelo
-  ajuste fino pela câmera.
+- `distancia_posicionamento_bandeira`: distância até a melhor estimativa da
+  bandeira para trocar o A* pelo ajuste fino pela câmera.
+- `area_posicionamento_bandeira`: referência de tamanho visual usada durante o
+  ajuste fino perto da bandeira.
 - `area_coleta_bandeira`, `distancia_coleta_bandeira` e
   `angulo_lidar_coleta_graus`: área visual, distância e janela central do
   LIDAR usadas para fechar a garra quando a haste está alinhada.

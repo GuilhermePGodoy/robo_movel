@@ -297,7 +297,7 @@ class MaquinaEstadosMissao:
             self.trocar_estado(
                 EstadoMissao.POSICIONANDO_PARA_COLETA,
                 (
-                    'bandeira grande o bastante na camera; '
+                    'bandeira pronta para ajuste fino; '
                     'abandonando A* e usando aproximacao visual'
                 ),
             )
@@ -320,7 +320,9 @@ class MaquinaEstadosMissao:
                 (
                     'visao=bandeira_parcial | aguardando_posicionamento | '
                     f'area={det.area_relativa:.3f}, '
-                    f'min_pos={robo.area_posicionamento_bandeira:.3f}, '
+                    f'dist_est={robo.distancia_estimativa_bandeira_para_posicionamento():.2f}m, '
+                    f'lim={robo.distancia_posicionamento_bandeira:.2f}m, '
+                    f'inteira={self.bandeira_inteira_visivel()}, '
                     f'erro_haste={det.erro_x_haste:+.2f}, '
                     f'box={det.largura}x{det.altura}'
                 ),
@@ -694,10 +696,7 @@ class MaquinaEstadosMissao:
         robo = self.robo
         tempo_no_estado = time.monotonic() - self.instante_inicio_estado
 
-        if (
-            self.bandeira_pronta_para_posicionamento()
-            or self.bandeira_centralizada_para_posicionamento()
-        ):
+        if self.bandeira_pronta_para_posicionamento():
             robo.limpar_caminho()
             self.trocar_estado(
                 EstadoMissao.POSICIONANDO_PARA_COLETA,
@@ -957,16 +956,17 @@ class MaquinaEstadosMissao:
         )
 
     def bandeira_util_para_posicionamento(self):
-        if not self.bandeira_parcial_visivel():
-            return False
-
-        return (
-            self.bandeira_inteira_visivel()
-            or deteccao_util_para_posicionamento(
-                self.robo.deteccao_bandeira,
-                self.robo.area_posicionamento_bandeira,
-            )
+        return deteccao_util_para_posicionamento(
+            self.robo.deteccao_bandeira,
+            self.bandeira_inteira_visivel(),
+            self.bandeira_perto_da_estimativa(),
         )
+
+    def bandeira_perto_da_estimativa(self):
+        distancia = self.robo.distancia_estimativa_bandeira_para_posicionamento(
+            fixar_estimativa_atual=True,
+        )
+        return distancia <= self.robo.distancia_posicionamento_bandeira
 
     def atualizar_confirmacao_bandeira_inteira(self):
         if not self.bandeira_recente():
@@ -977,20 +977,15 @@ class MaquinaEstadosMissao:
             self.robo.deteccao_bandeira,
             self.robo.margem_borda_bandeira_px,
             self.robo.area_minima_bandeira_inteira,
+            self.robo.fill_ratio_minimo_estimativa,
+            self.robo.fill_ratio_maximo_estimativa,
+            self.robo.proporcao_minima_bbox_estimativa,
+            self.robo.proporcao_maxima_bbox_estimativa,
         )
 
     def bandeira_inteira_visivel(self):
         return self.confirmador_bandeira_inteira.confirmada(
             self.robo.frames_bandeira_inteira
-        )
-
-    def bandeira_centralizada_para_posicionamento(self):
-        det = self.robo.deteccao_bandeira
-        return (
-            self.bandeira_parcial_visivel()
-            and det.area_relativa >= self.robo.area_minima_bandeira_inteira
-            and abs(self.erro_x_haste())
-            <= self.robo.erro_alinhamento_bandeira * 1.5
         )
 
     def atualizar_memoria_direcao_bandeira(self):
@@ -1122,10 +1117,7 @@ class MaquinaEstadosMissao:
         robo = self.robo
 
         if self.estado_retorno_desvio == EstadoMissao.POSICIONANDO_PARA_COLETA:
-            if (
-                self.bandeira_pronta_para_posicionamento()
-                or self.bandeira_centralizada_para_posicionamento()
-            ):
+            if self.bandeira_pronta_para_posicionamento():
                 self.trocar_estado(
                     EstadoMissao.POSICIONANDO_PARA_COLETA,
                     (
@@ -1215,9 +1207,9 @@ class MaquinaEstadosMissao:
         """Diz quando a camera ja deve assumir o ajuste final.
 
         Perto da bandeira, pequenas mudancas na estimativa podem fazer o A*
-        escolher um caminho ruim. Por isso usamos um criterio bem direto:
-        quando a bandeira ocupa area suficiente na imagem, o planejamento
-        global para e o controle visual passa a mirar a haste.
+        escolher um caminho ruim. Por isso o planejamento global para quando
+        a bandeira parece inteira na imagem ou quando a melhor estimativa ja
+        coloca o robo perto o bastante do alvo.
         """
 
         return self.bandeira_util_para_posicionamento()
