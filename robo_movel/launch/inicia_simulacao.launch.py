@@ -84,20 +84,10 @@ def generate_launch_description():
         os.path.join(pkg_share, "models"),
         os.environ.get('GZ_SIM_RESOURCE_PATH', default=''),
     ])
-    ign_models_path = ":".join([
-        pkg_share,
-        os.path.join(pkg_share, "models"),
-        os.environ.get('IGN_GAZEBO_RESOURCE_PATH', default=''),
-    ])
 
     gz_set_env = SetEnvironmentVariable(
         name="GZ_SIM_RESOURCE_PATH",
         value=gz_models_path,
-    )
-
-    ign_set_env = SetEnvironmentVariable(
-        name="IGN_GAZEBO_RESOURCE_PATH",
-        value=ign_models_path,
     )
 
     # ------------------------------------------------------
@@ -123,7 +113,6 @@ def generate_launch_description():
     return LaunchDescription([
         world_file_arg,
         gz_set_env,
-        ign_set_env,
         bridge,
         gazebo
     ])
