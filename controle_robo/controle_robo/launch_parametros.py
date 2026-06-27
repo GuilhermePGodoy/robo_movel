@@ -312,18 +312,6 @@ PARAMETROS_CONTROLE = [
         float,
     ),
     Argumento(
-        'confianca_minima_planejamento',
-        '0.35',
-        'Confianca minima para transformar estimativa em caminho A*',
-        float,
-    ),
-    Argumento(
-        'historico_estimativas_bandeira',
-        '5',
-        'Tamanho da media movel das estimativas da bandeira',
-        int,
-    ),
-    Argumento(
         'custo_desconhecido',
         '3.0',
         'Custo de celulas desconhecidas no A*',

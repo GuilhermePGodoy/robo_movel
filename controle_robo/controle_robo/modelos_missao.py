@@ -54,11 +54,7 @@ class EstimativaBandeira:
     distancia: float = 0.0
     angulo_relativo: float = 0.0
     angulo_mundo: float = 0.0
-    confianca: float = 0.0
-    confianca_tamanho: float = 0.0
-    confianca_centro: float = 0.0
-    confianca_borda: float = 0.0
-    confianca_lidar: float = 0.0
+    altura_bbox: int = 0
     instante: float = 0.0
 
 

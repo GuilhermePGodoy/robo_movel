@@ -38,10 +38,10 @@ controle_robo:
     # Velocidade angular base das manobras de desvio.
     velocidade_angular_desvio: -0.4
     # Distancia frontal minima para considerar que ha obstaculo.
-    distancia_obstaculo: 0.65
+    distancia_obstaculo: 0.6
     # Durante o retorno, o robo esta carregando a bandeira e precisa reagir um
     # pouco antes para manobrar sem encostar a garra/haste nos obstaculos.
-    distancia_obstaculo_retorno: 0.75
+    distancia_obstaculo_retorno: 0.7
     # Setor frontal do LaserScan, em graus, usado para medir obstaculos.
     angulo_frontal_graus: 30.0
     # Depois da captura, a bandeira aparece no centro do LIDAR; esta janela
@@ -144,10 +144,6 @@ controle_robo:
     # extremos tambem costumam ser recortes parciais.
     proporcao_minima_bbox_estimativa: 0.10
     proporcao_maxima_bbox_estimativa: 0.70
-    # Confianca minima para transformar uma deteccao visual em alvo do A*.
-    confianca_minima_planejamento: 0.35
-    # Numero de estimativas recentes usadas na media movel da bandeira.
-    historico_estimativas_bandeira: 5
     # Custo de celulas desconhecidas no A*. Permite explorar, mas com cautela.
     custo_desconhecido: 3.0
     # Margem em celulas ao redor de obstaculos do mapa.
@@ -165,7 +161,7 @@ controle_robo:
     distancia_lookahead_waypoint: 0.65
     # Peso para o A* preferir, nos primeiros passos, rotas alinhadas com o yaw
     # atual do robo. Se ficar teimoso demais, reduza para perto de 0.
-    peso_orientacao_inicial: 4.0
+    peso_orientacao_inicial: 20.0
     velocidade_seguindo_caminho: 0.32
     # Replaneja quando a camera muda bastante a estimativa da bandeira.
     deslocamento_replanejamento_alvo: 1.5
@@ -193,6 +189,6 @@ controle_robo:
     # Tolerancia usada somente no fallback por colored_map.
     tolerancia_cor_bandeira: 0.0
     # Ative quando quiser investigar mascara, contornos e labels da camera.
-    debug_detector: true
-    publicar_mascara_debug: true
+    debug_detector: false
+    publicar_mascara_debug: false
     periodo_log_debug: 1.0

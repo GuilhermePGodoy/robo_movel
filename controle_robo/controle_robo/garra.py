@@ -47,6 +47,28 @@ class ControleGarra:
                 f'cmd={self.robo.comando_garra_captura}'
             )
 
+    def recolher_sem_captura(self, forcar: bool = False):
+        """Fecha a garra, mas permite abrir novamente depois.
+
+        Usamos isso quando o robo estava se posicionando, perdeu a visao da
+        bandeira e vai voltar a procurar/replanejar. A garra nao deve seguir
+        aberta pela arena, mas tambem nao podemos marcar a bandeira como
+        capturada.
+        """
+
+        if not self.robo.habilitar_garra:
+            return
+        if not self.aberta and not forcar:
+            return
+
+        self._publicar(self.robo.comando_garra_recolhida)
+        self.aberta = False
+        self.fechada = False
+        self.robo.get_logger().info(
+            'GARRA | acao=recolher_sem_captura | '
+            f'cmd={self.robo.comando_garra_recolhida}'
+        )
+
     def soltar_na_base(self, forcar: bool = False):
         if not self.robo.habilitar_garra:
             return

@@ -94,7 +94,7 @@ A lógica da missão foi separada em alguns arquivos pequenos:
 - `src/controle_robo/controle_robo/modelos_missao.py`: enum dos estados e
   estrutura da detecção visual.
 - `src/controle_robo/controle_robo/estimador_bandeira.py`: trigonometria da
-  câmera para estimar distância, ângulo e confiança da bandeira.
+  câmera para estimar distância, ângulo e posição da bandeira no mapa.
 - `src/controle_robo/controle_robo/planejador_grade.py`: A* sobre o
   `OccupancyGrid`, com custo maior para células desconhecidas e células perto
   de obstáculos.
@@ -110,7 +110,7 @@ Estados principais:
 - `BANDEIRA_DETECTADA`: confirma que a detecção visual é recente e decide se
   já pode iniciar ajuste fino ou estimar a posição no mapa.
 - `ESTIMANDO_POSICAO_BANDEIRA`: usa tamanho da bounding box, FOV da câmera,
-  pose do robô e LIDAR para estimar `(x, y, confiança)` da bandeira.
+  pose do robô e filtros de bbox para estimar `(x, y)` da bandeira.
 - `PLANEJANDO_PARA_BANDEIRA`: roda A* do ponto atual até uma célula livre
   perto da estimativa da bandeira.
 - `SEGUINDO_CAMINHO_PARA_BANDEIRA`: segue waypoints do A* e replaneja se o
@@ -157,8 +157,8 @@ Alguns ajustes úteis:
 - `tempo_redeteccao_bandeira`: tempo máximo girando parado para reencontrar a
   bandeira depois de um desvio perto da coleta.
 - `usar_planejamento_grade`: habilita/desabilita A* sobre `/grid_map`.
-- `confianca_minima_planejamento`: confiança mínima da estimativa visual antes
-  de planejar caminho.
+- `fill_ratio_*_estimativa` e `proporcao_*_bbox_estimativa`: filtros para
+  aceitar a bbox da bandeira antes de estimar sua posição no mapa.
 - `custo_desconhecido`, `inflacao_obstaculo_celulas` e
   `custo_adjacente_obstaculo`: comportamento do A* em regiões desconhecidas e
   perto de obstáculos.

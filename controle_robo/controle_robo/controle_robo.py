@@ -55,6 +55,7 @@ class ControleRobo(Node):
         self.mapa_grade = None
         self.ultimo_instante_mapa = None
         self.estimativa_bandeira = EstimativaBandeira()
+        self.altura_melhor_estimativa_bandeira = 0
         self.caminho_planejado = []
         self.indice_waypoint = 0
         self.destino_caminho = None
@@ -68,7 +69,6 @@ class ControleRobo(Node):
             self.altura_real_bandeira,
             self.distancia_minima_estimativa,
             self.distancia_maxima_estimativa,
-            self.historico_estimativas_bandeira,
             self.fill_ratio_minimo_estimativa,
             self.fill_ratio_maximo_estimativa,
             self.proporcao_minima_bbox_estimativa,
@@ -178,8 +178,6 @@ class ControleRobo(Node):
         self.declare_parameter('fill_ratio_maximo_estimativa', 0.82)
         self.declare_parameter('proporcao_minima_bbox_estimativa', 0.20)
         self.declare_parameter('proporcao_maxima_bbox_estimativa', 1.35)
-        self.declare_parameter('confianca_minima_planejamento', 0.35)
-        self.declare_parameter('historico_estimativas_bandeira', 5)
         self.declare_parameter('custo_desconhecido', 3.0)
         self.declare_parameter('inflacao_obstaculo_celulas', 1)
         self.declare_parameter('custo_adjacente_obstaculo', 2.0)
@@ -292,6 +290,14 @@ class ControleRobo(Node):
             float(self.get_parameter('garra_direita_captura').value),
             float(self.get_parameter('garra_esquerda_captura').value),
         ]
+        # Fecha os dedos sem levantar a haste. Usado quando o robo perde a
+        # bandeira durante o posicionamento e precisa voltar a procurar sem
+        # andar com a garra aberta.
+        self.comando_garra_recolhida = [
+            self.comando_garra_aberta[0],
+            self.comando_garra_captura[1],
+            self.comando_garra_captura[2],
+        ]
         self.usar_planejamento_grade = bool(
             self.get_parameter('usar_planejamento_grade').value
         )
@@ -337,12 +343,6 @@ class ControleRobo(Node):
         )
         self.proporcao_maxima_bbox_estimativa = float(
             self.get_parameter('proporcao_maxima_bbox_estimativa').value
-        )
-        self.confianca_minima_planejamento = float(
-            self.get_parameter('confianca_minima_planejamento').value
-        )
-        self.historico_estimativas_bandeira = int(
-            self.get_parameter('historico_estimativas_bandeira').value
         )
         self.custo_desconhecido = float(
             self.get_parameter('custo_desconhecido').value
@@ -534,7 +534,7 @@ class ControleRobo(Node):
             periodo=1.0,
         )
 
-    def atualizar_estimativa_bandeira(self):
+    def atualizar_estimativa_bandeira(self, preferir_maior_altura=False):
         det = self.deteccao_bandeira
         if det.pose_robo_valida:
             x_referencia = det.x_robo
@@ -545,17 +545,21 @@ class ControleRobo(Node):
             y_referencia = self.y
             yaw_referencia = self.yaw
 
-        self.estimativa_bandeira = self.estimador_bandeira.estimar(
+        nova_estimativa = self.estimador_bandeira.estimar(
             det,
             x_referencia,
             y_referencia,
             yaw_referencia,
-            self.distancia_frontal,
         )
 
-        est = self.estimativa_bandeira
-        if est.valida:
-            self.publicar_alvo_estimado(est)
+        aceita = self.estimativa_deve_substituir_atual(
+            nova_estimativa,
+            preferir_maior_altura,
+        )
+        if aceita:
+            self.estimativa_bandeira = nova_estimativa
+            self.altura_melhor_estimativa_bandeira = nova_estimativa.altura_bbox
+            self.publicar_alvo_estimado(nova_estimativa)
 
         delta_pose = math.hypot(self.x - x_referencia, self.y - y_referencia)
         delta_yaw = self.normalizar_angulo(self.yaw - yaw_referencia)
@@ -571,34 +575,48 @@ class ControleRobo(Node):
             'estimativa_bandeira',
             (
                 'ESTIMATIVA | alvo=bandeira | '
-                f'valida={est.valida} | '
-                f'dist={est.distancia:.2f}m, '
-                f'ang={est.angulo_relativo:+.2f}rad, '
-                f'alvo=({est.x:.2f}, {est.y:.2f}), '
+                f'valida={nova_estimativa.valida} | '
+                f'aceita={aceita} | '
+                f'dist={nova_estimativa.distancia:.2f}m, '
+                f'ang={nova_estimativa.angulo_relativo:+.2f}rad, '
+                f'alvo=({nova_estimativa.x:.2f}, {nova_estimativa.y:.2f}), '
                 f'bbox={det.largura}x{det.altura}, '
+                f'altura_melhor={self.altura_melhor_estimativa_bandeira}, '
                 f'fill={fill_ratio:.2f}, prop={proporcao_bbox:.2f}, '
                 f'pose_ref=({x_referencia:.2f}, {y_referencia:.2f}, '
                 f'yaw={yaw_referencia:.2f}), '
                 f'delta_pose={delta_pose:.2f}m, '
-                f'delta_yaw={delta_yaw:+.2f}rad, '
-                f'conf={est.confianca:.2f} '
-                f'(tam={est.confianca_tamanho:.2f}, '
-                f'centro={est.confianca_centro:.2f}, '
-                f'borda={est.confianca_borda:.2f}, '
-                f'lidar={est.confianca_lidar:.2f})'
+                f'delta_yaw={delta_yaw:+.2f}rad'
             ),
             periodo=0.8,
         )
-        return est
+        return nova_estimativa, aceita
 
-    def estimativa_bandeira_confiavel(self):
-        if not self.estimativa_bandeira.valida:
+    def estimativa_deve_substituir_atual(
+        self,
+        nova_estimativa,
+        preferir_maior_altura,
+    ):
+        if not nova_estimativa.valida:
             return False
-        if self.estimativa_bandeira.confianca < self.confianca_minima_planejamento:
+        if not preferir_maior_altura:
+            return True
+        if not self.estimativa_bandeira.valida:
+            return True
+
+        altura_minima = max(
+            self.altura_melhor_estimativa_bandeira + 1,
+            int(math.ceil(1.10 * self.altura_melhor_estimativa_bandeira)),
+        )
+        return nova_estimativa.altura_bbox >= altura_minima
+
+    def estimativa_bandeira_valida(self):
+        if not self.estimativa_bandeira.valida:
             return False
         if not self.estimativa_bandeira_dentro_do_mapa():
             alvo = self.ponto_aproximacao_bandeira()
-            self.estimador_bandeira.limpar_historico()
+            self.estimativa_bandeira = EstimativaBandeira()
+            self.altura_melhor_estimativa_bandeira = 0
             self.log_periodico(
                 'estimativa_fora_mapa',
                 (
@@ -620,8 +638,8 @@ class ControleRobo(Node):
         return mapa.celula_valida(mapa.world_to_grid(*alvo))
 
     def planejar_para_bandeira(self):
-        if not self.estimativa_bandeira_confiavel():
-            return False, 'estimativa da bandeira ainda nao e confiavel'
+        if not self.estimativa_bandeira_valida():
+            return False, 'estimativa da bandeira ainda nao e valida'
 
         alvo_aproximacao = self.ponto_aproximacao_bandeira()
         sucesso, motivo = self.planejar_para(alvo_aproximacao, 'bandeira')
@@ -649,26 +667,34 @@ class ControleRobo(Node):
             est.y + dy * escala,
         )
 
-    def replanejar_para_bandeira_congelada(self):
-        """Recalcula a rota sem trocar o alvo visual ja escolhido.
+    def replanejar_para_bandeira_atual(self):
+        """Recalcula a rota para o alvo visual escolhido atualmente.
 
-        Enquanto estamos depurando o A*, a camera serve para escolher o alvo
-        uma vez. Depois disso, obstaculos e mudancas no mapa podem forcar
-        replanejamento, mas sempre para o mesmo ponto estimado.
+        Obstaculos e mudancas no mapa podem forcar replanejamento para o mesmo
+        ponto. Se a camera encontrar uma bbox melhor durante o A*, outra parte
+        do controle atualiza self.alvo_caminho antes deste metodo ser chamado.
+        Quando o caminho foi limpo ao entrar no posicionamento visual, usamos
+        a melhor estimativa da bandeira que ainda estiver valida.
         """
 
-        if self.alvo_caminho is None or self.destino_caminho != 'bandeira':
-            return False, 'nao existe alvo congelado da bandeira para replanejar'
+        if self.alvo_caminho is not None and self.destino_caminho == 'bandeira':
+            alvo_planejado = self.alvo_caminho
+        elif self.estimativa_bandeira_valida():
+            alvo_planejado = self.ponto_aproximacao_bandeira()
+        else:
+            return False, 'nao existe alvo valido da bandeira para replanejar'
 
-        alvo_congelado = self.alvo_caminho
-        sucesso, motivo = self.planejar_para(alvo_congelado, 'bandeira')
+        sucesso, motivo = self.planejar_para(alvo_planejado, 'bandeira')
         if not sucesso and 'fora dos limites do mapa' not in motivo:
-            self.alvo_caminho = alvo_congelado
+            self.alvo_caminho = alvo_planejado
             self.destino_caminho = 'bandeira'
         return sucesso, motivo
 
-    def tem_alvo_bandeira_congelado(self):
+    def tem_alvo_bandeira_planejado(self):
         return self.destino_caminho == 'bandeira' and self.alvo_caminho is not None
+
+    def pode_replanejar_para_bandeira(self):
+        return self.tem_alvo_bandeira_planejado() or self.estimativa_bandeira_valida()
 
     def planejar_para_base(self):
         if self.pose_base is None:
@@ -973,7 +999,7 @@ class ControleRobo(Node):
     def alvo_bandeira_mudou_para_replanejar(self):
         if self.destino_caminho != 'bandeira' or self.alvo_caminho is None:
             return False
-        if not self.estimativa_bandeira_confiavel():
+        if not self.estimativa_bandeira_valida():
             return False
 
         agora = time.monotonic()
@@ -991,14 +1017,16 @@ class ControleRobo(Node):
         if delta < self.deslocamento_replanejamento_alvo:
             return False
 
+        alvo_antigo = self.alvo_caminho
+        self.alvo_caminho = novo_alvo_caminho
         self.ultimo_replanejamento_visual = agora
         self.log_periodico(
             'replanejamento_alvo_bandeira',
             (
                 'A* | replanejar=sim | motivo=alvo_visual_mudou | '
                 f'delta={delta:.2f}m, '
-                f'antigo=({self.alvo_caminho[0]:.2f}, '
-                f'{self.alvo_caminho[1]:.2f}), '
+                f'antigo=({alvo_antigo[0]:.2f}, '
+                f'{alvo_antigo[1]:.2f}), '
                 f'novo_aprox=({novo_alvo_caminho[0]:.2f}, '
                 f'{novo_alvo_caminho[1]:.2f}), '
                 f'estimativa_real=({self.estimativa_bandeira.x:.2f}, '

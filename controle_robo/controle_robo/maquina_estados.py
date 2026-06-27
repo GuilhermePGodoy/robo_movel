@@ -207,13 +207,13 @@ class MaquinaEstadosMissao:
             )
             return
 
-        estimativa = robo.atualizar_estimativa_bandeira()
-        if robo.estimativa_bandeira_confiavel():
+        estimativa, aceita = robo.atualizar_estimativa_bandeira()
+        if aceita and robo.estimativa_bandeira_valida():
             self.trocar_estado(
                 EstadoMissao.PLANEJANDO_PARA_BANDEIRA,
                 (
-                    'estimativa confiavel '
-                    f'conf={estimativa.confianca:.2f}, '
+                    'estimativa visual valida '
+                    f'altura_bbox={estimativa.altura_bbox}, '
                     f'alvo=({estimativa.x:.2f}, {estimativa.y:.2f})'
                 ),
             )
@@ -224,8 +224,8 @@ class MaquinaEstadosMissao:
             self.trocar_estado(
                 EstadoMissao.EXPLORANDO,
                 (
-                    'estimativa visual ainda fraca '
-                    f'conf={estimativa.confianca:.2f}; voltando a explorar'
+                    'sem bbox valida para estimar a bandeira; '
+                    'voltando a explorar'
                 ),
             )
             return
@@ -262,7 +262,8 @@ class MaquinaEstadosMissao:
                 f'erro_blob={det.erro_x:+.2f}, '
                 f'erro_haste={det.erro_x_haste:+.2f}, '
                 f'area={det.area_relativa:.3f}, '
-                f'conf={estimativa.confianca:.2f}, '
+                f'estimativa_valida={estimativa.valida}, '
+                f'aceita={aceita}, '
                 f'fator_vel={fator_obstaculo:.2f}, '
                 f'cmd=({linear:.2f}, {angular:+.2f})'
             ),
@@ -272,10 +273,10 @@ class MaquinaEstadosMissao:
     def estado_planejando_para_bandeira(self):
         robo = self.robo
 
-        if not robo.estimativa_bandeira_confiavel():
+        if not robo.estimativa_bandeira_valida():
             self.trocar_estado(
                 EstadoMissao.ESTIMANDO_POSICAO_BANDEIRA,
-                'estimativa perdeu confianca antes do planejamento',
+                'estimativa ficou invalida antes do planejamento',
             )
             return
 
@@ -302,12 +303,14 @@ class MaquinaEstadosMissao:
             )
             return
 
-        if self.bandeira_inteira_visivel():
-            robo.atualizar_estimativa_bandeira()
-            if robo.alvo_bandeira_mudou_para_replanejar():
+        if self.bandeira_parcial_visivel():
+            _, aceita = robo.atualizar_estimativa_bandeira(
+                preferir_maior_altura=True,
+            )
+            if aceita and robo.alvo_bandeira_mudou_para_replanejar():
                 self.trocar_estado(
                     EstadoMissao.REPLANEJANDO_CAMINHO,
-                    'bandeira inteira vista durante A*; atualizando alvo',
+                    'bbox melhor da bandeira vista durante A*; atualizando alvo',
                 )
                 return
 
@@ -591,7 +594,7 @@ class MaquinaEstadosMissao:
             else:
                 self.trocar_estado(EstadoMissao.FALHA_PLANEJAMENTO, motivo)
         else:
-            sucesso, motivo = robo.replanejar_para_bandeira_congelada()
+            sucesso, motivo = robo.replanejar_para_bandeira_atual()
             if sucesso:
                 self.trocar_estado(
                     EstadoMissao.SEGUINDO_CAMINHO_PARA_BANDEIRA,
@@ -624,14 +627,14 @@ class MaquinaEstadosMissao:
                 'A* falhou, mas a bandeira esta grande/alinhada; usando camera',
             )
         elif (
-            robo.tem_alvo_bandeira_congelado()
+            robo.tem_alvo_bandeira_planejado()
             and robo.chegou_perto_da_bandeira_planejada()
         ):
             if robo.obstaculo_a_frente:
                 self.trocar_estado(
                     EstadoMissao.DESVIANDO_OBSTACULO,
                     (
-                        'perto do alvo congelado sem bandeira clara, mas ha '
+                        'perto do alvo planejado sem bandeira clara, mas ha '
                         'obstaculo a frente; tentando abrir visada'
                     ),
                 )
@@ -649,23 +652,32 @@ class MaquinaEstadosMissao:
                 )
                 return
 
-            robo.limpar_caminho()
-            self.trocar_estado(
-                EstadoMissao.EXPLORANDO,
-                (
-                    'busca local no alvo nao reencontrou a bandeira; '
-                    'retomando exploracao ampla'
-                ),
-            )
+            if robo.pode_replanejar_para_bandeira():
+                self.trocar_estado(
+                    EstadoMissao.REPLANEJANDO_CAMINHO,
+                    (
+                        'busca local no alvo nao reencontrou a bandeira; '
+                        'replanejando para a melhor estimativa'
+                    ),
+                )
+            else:
+                robo.limpar_caminho()
+                self.trocar_estado(
+                    EstadoMissao.EXPLORANDO,
+                    (
+                        'busca local no alvo nao reencontrou a bandeira '
+                        'e nao ha estimativa valida; retomando exploracao'
+                    ),
+                )
         elif tempo_no_estado < 1.0:
             self.log_estado_periodico(
                 'falha de planejamento; aguardando nova leitura do mapa',
                 periodo=0.5,
             )
-        elif robo.tem_alvo_bandeira_congelado():
+        elif robo.pode_replanejar_para_bandeira():
             self.trocar_estado(
                 EstadoMissao.REPLANEJANDO_CAMINHO,
-                'tentando replanejar novamente ate o alvo congelado',
+                'tentando replanejar novamente ate a melhor estimativa',
             )
         elif self.bandeira_recente():
             self.trocar_estado(
@@ -694,12 +706,12 @@ class MaquinaEstadosMissao:
             return
 
         if tempo_no_estado >= robo.tempo_redeteccao_bandeira:
-            if robo.tem_alvo_bandeira_congelado():
+            if robo.pode_replanejar_para_bandeira():
                 self.trocar_estado(
                     EstadoMissao.REPLANEJANDO_CAMINHO,
                     (
                         'redeteccao visual esgotou tempo; '
-                        'voltando ao alvo estimado'
+                        'replanejando para a melhor estimativa da bandeira'
                     ),
                 )
             else:
@@ -1145,7 +1157,7 @@ class MaquinaEstadosMissao:
             EstadoMissao.SEGUINDO_CAMINHO_PARA_BANDEIRA,
             EstadoMissao.REPLANEJANDO_CAMINHO,
             EstadoMissao.FALHA_PLANEJAMENTO,
-        ) and robo.tem_alvo_bandeira_congelado():
+        ) and robo.pode_replanejar_para_bandeira():
             self.trocar_estado(
                 EstadoMissao.REPLANEJANDO_CAMINHO,
                 (
@@ -1345,6 +1357,9 @@ class MaquinaEstadosMissao:
     def fechar_garra(self, forcar: bool = False):
         self.garra.fechar_para_transporte(forcar)
 
+    def recolher_garra_sem_captura(self, forcar: bool = False):
+        self.garra.recolher_sem_captura(forcar)
+
     def soltar_garra(self, forcar: bool = False):
         self.garra.soltar_na_base(forcar)
 
@@ -1358,6 +1373,15 @@ class MaquinaEstadosMissao:
             self.fase_desvio = 'girando'
             self.instante_inicio_avanco_desvio = None
             self.direcao_desvio_atual = self.robo.direcao_desvio
+        if (
+            estado_anterior == EstadoMissao.POSICIONANDO_PARA_COLETA
+            and novo_estado
+            not in (
+                EstadoMissao.POSICIONANDO_PARA_COLETA,
+                EstadoMissao.CAPTURANDO_BANDEIRA,
+            )
+        ):
+            self.recolher_garra_sem_captura(forcar=True)
         self.estado_atual = novo_estado
         self.instante_inicio_estado = time.monotonic()
         if novo_estado == EstadoMissao.POSICIONANDO_PARA_COLETA:
