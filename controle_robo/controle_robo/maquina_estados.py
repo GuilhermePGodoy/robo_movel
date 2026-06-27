@@ -873,6 +873,23 @@ class MaquinaEstadosMissao:
             )
             return
 
+        waypoint_pulado = robo.pular_waypoint_ruim_no_retorno()
+        if waypoint_pulado is not None:
+            indice_pulado, distancia, erro_yaw = waypoint_pulado
+            self.log_estado_periodico(
+                (
+                    'acao=pular_waypoint_retorno | '
+                    f'wp_pulado={indice_pulado + 1}/'
+                    f'{len(robo.caminho_planejado)}, '
+                    f'dist_wp={distancia:.2f}m, '
+                    f'erro_yaw={erro_yaw:+.2f}, '
+                    'motivo=perto_demais_para_giro_puro_com_bandeira'
+                ),
+                periodo=0.2,
+            )
+            robo.publicar_velocidade(0.0, 0.0)
+            return
+
         comando = robo.comando_para_waypoint(self.distancia_frontal_ativa())
         if comando is None:
             self.trocar_estado(

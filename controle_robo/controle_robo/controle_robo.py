@@ -778,6 +778,39 @@ class ControleRobo(Node):
                 break
             self.indice_waypoint += 1
 
+    def pular_waypoint_ruim_no_retorno(self):
+        """Evita giro puro em waypoint muito perto durante o retorno.
+
+        Quando o waypoint esta muito perto e quase atras do robo, e mais estavel seguir para o
+        proximo ponto do caminho.
+        """
+
+        self.pular_waypoints_proximos()
+        if not self.caminho_ativo():
+            return None
+
+        # Nao pula o ultimo ponto: a chegada na base e decidida por
+        # chegou_na_base(), entao o final do caminho ainda precisa existir.
+        if self.indice_waypoint >= len(self.caminho_planejado) - 1:
+            return None
+
+        wx, wy = self.waypoint_atual()
+        dx = wx - self.x
+        dy = wy - self.y
+        distancia = math.hypot(dx, dy)
+        alvo_yaw = math.atan2(dy, dx)
+        erro_yaw = self.normalizar_angulo(alvo_yaw - self.yaw)
+
+        distancia_ruim = max(0.40, 2.0 * self.tolerancia_waypoint)
+        giro_ruim = 1.4
+        if distancia > distancia_ruim or abs(erro_yaw) < giro_ruim:
+            return None
+
+        indice_pulado = self.indice_waypoint
+        self.indice_waypoint += 1
+        self.publicar_caminho_planejado()
+        return indice_pulado, distancia, erro_yaw
+
     def comando_para_waypoint(self, distancia_frontal=None):
         self.pular_waypoints_proximos()
         waypoint = self.waypoint_atual()
