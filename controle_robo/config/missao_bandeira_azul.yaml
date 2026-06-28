@@ -8,8 +8,8 @@
 
 launch:
   # Mundo carregado pelo pacote robo_movel.
-  # Opcoes usuais: arena_cilindros.sdf, empty_arena.sdf, arena_paredes.sdf.
-  world: arena_cilindros.sdf
+  # Opcoes usuais: arena_cilindros.sdf, empty_arena.sdf, arena_paredes.sdf
+  world: arena_cilindros_v2.sdf
 
   # Todos os nos usam o relogio da simulacao.
   use_sim_time: true
@@ -38,7 +38,7 @@ controle_robo:
     # Velocidade angular base das manobras de desvio.
     velocidade_angular_desvio: -0.4
     # Distancia frontal minima para considerar que ha obstaculo.
-    distancia_obstaculo: 0.65
+    distancia_obstaculo: 0.68
     # Durante o retorno, o robo esta carregando a bandeira e precisa reagir um
     # pouco antes para manobrar sem encostar a garra/haste nos obstaculos.
     distancia_obstaculo_retorno: 0.7
