@@ -1,17 +1,29 @@
-# Arquitetura do Controle da Missão
+# Arquitetura do Controle do Robô
 
-Este documento explica a parte implementada no pacote `controle_robo`. A ideia
-é ajudar alguém novo no projeto a entender onde cada decisão mora antes de
-mudar o código.
+Este documento explica a organização do projeto na versão final do Trabalho 2.
+A intenção é deixar claro onde cada decisão mora, para que outra pessoa consiga
+entrar no código sem precisar reconstruir todo o histórico de desenvolvimento.
+
+## Origem do Projeto
+
+O projeto foi desenvolvido a partir do template disponibilizado pelo professor
+no repositório [matheusbg8/prm_2026](https://github.com/matheusbg8/prm_2026).
+O pacote `robo_movel` deste repositório é uma evolução direta dessa base:
+mantém a ideia original de simulação, robô, sensores e mundos, mas foi adaptado
+e expandido para o fluxo usado neste trabalho.
+
+O pacote `controle_robo` concentra o desenvolvimento da missão autônoma:
+detecção da bandeira, máquina de estados, planejamento, desvio, captura e
+retorno à base.
 
 ## Visão Geral
 
-O sistema ficou dividido em dois pacotes:
+O sistema está dividido em dois pacotes ROS 2:
 
-- `robo_movel`: sobe a simulação, o modelo do robô, os sensores, os
-  controladores e o mapa `/grid_map`.
-- `controle_robo`: detecta a bandeira azul, decide a missão, planeja caminhos
-  com A*, desvia de obstáculos e controla a garra.
+- `robo_movel`: simulação, modelo do robô, sensores, controladores, mundos,
+  odometria ground truth e mapper.
+- `controle_robo`: percepção da bandeira, controle da missão, planejamento A*,
+  controle da garra e launches de execução.
 
 O launch principal é:
 
@@ -20,121 +32,138 @@ ros2 launch controle_robo missao_bandeira_azul.launch.py
 ```
 
 Ele lê `controle_robo/config/missao_bandeira_azul.yaml`, sobe a simulação do
-pacote `robo_movel`, espera o robô nascer e inicia os nós de missão.
+pacote `robo_movel`, espera o robô nascer e inicia os nós da missão.
 
 ## Arquivos Principais
 
 - `controle_robo.py`
-  - É o nó ROS principal.
-  - Declara parâmetros, cria publishers/subscribers e guarda a última leitura
-    de cada sensor.
-  - Não deveria concentrar regras grandes da missão. Quando uma regra crescer,
-    vale mover para um módulo menor.
+  - Nó ROS principal.
+  - Declara parâmetros, cria publishers/subscribers e guarda a leitura mais
+    recente de cada sensor.
+  - Também publica comandos de velocidade, garra, congelamento do mapper,
+    caminho planejado e alvo estimado.
 
 - `maquina_estados.py`
-  - Contém a máquina de estados da missão.
-  - Lê o estado atual dos sensores guardado em `ControleRobo`.
-  - Decide quando publicar velocidades, abrir/fechar a garra, planejar ou mudar
-    de estado.
+  - Coração da missão.
+  - Decide transições de estado, comandos de movimento, uso do A*, comandos de
+    garra e recuperação em caso de obstáculo ou perda visual da bandeira.
+
+- `modelos_missao.py`
+  - Define o enum `EstadoMissao`.
+  - Define estruturas simples para detecção visual e estimativa da bandeira.
 
 - `detector_bandeira.py`
-  - Recebe a imagem semântica `/robot_cam/labels_map`.
-  - Procura pixels com a label `25`, que representam a bandeira azul.
-  - Publica `/bandeira_azul/deteccao` como um vetor numérico simples.
-
-- `visao_bandeira.py`
-  - Funções auxiliares para extrair informações visuais da bandeira.
-  - Inclui a estimativa da posição da haste, que é melhor para alinhar a garra
-    do que o centro da bounding box inteira.
+  - Recebe `/robot_cam/labels_map`.
+  - Procura a label semântica `25`, correspondente à bandeira azul.
+  - Publica `/bandeira_azul/deteccao`, `/bandeira_azul/debug_info` e
+    `/bandeira_azul/debug_mask`.
 
 - `criterios_visuais.py`
-  - Heurísticas pequenas sobre a detecção visual.
-  - Exemplos: "tem bandeira parcial?", "tem bandeira suficiente para
-    posicionamento?", "a bandeira parece inteira por alguns frames?".
+  - Agrupa regras pequenas de visão.
+  - Decide se uma bbox é boa para estimar a bandeira e se a bandeira visível já
+    é útil para entrar no posicionamento de coleta.
 
 - `estimador_bandeira.py`
-  - Usa o tamanho da bbox na câmera para estimar distância.
-  - Usa o deslocamento horizontal da haste/bbox para estimar ângulo relativo.
-  - Transforma essa hipótese em coordenada do mapa usando a pose do robô.
+  - Usa trigonometria da câmera para transformar bbox em distância, ângulo e
+    posição `(x, y)` no mapa.
+  - Mantém a melhor estimativa visual: leituras válidas mais próximas, com bbox
+    mais alta e coerente, substituem leituras antigas.
 
 - `planejador_grade.py`
-  - Implementa A* em cima do `nav_msgs/OccupancyGrid`.
-  - Células livres custam pouco, desconhecidas custam mais, ocupadas bloqueiam.
-  - Infla obstáculos para o robô não passar raspando.
-  - Também aumenta o custo de células livres adjacentes aos obstáculos, para
-    favorecer caminhos com mais folga.
+  - Implementa A* sobre `nav_msgs/OccupancyGrid`.
+  - Bloqueia células ocupadas, permite células desconhecidas com custo maior e
+    aumenta o custo de regiões próximas de obstáculos.
 
 - `lidar.py`
-  - Organiza o `LaserScan` em regiões: frente, frente sem centro, frente
+  - Organiza o `LaserScan` em regiões úteis: frente, frente sem centro, faixa
     estreita de coleta, esquerda e direita.
-  - Escolhe o lado de desvio olhando qual lado/frente está mais livre.
-  - A leitura "frente sem centro" é usada no retorno, porque a bandeira presa
-    na garra aparece no centro do LIDAR.
-  - A leitura "frente de coleta" é uma faixa estreita central usada para decidir
-    quando fechar a garra.
+  - Escolhe o lado de desvio com base na folga real disponível.
 
 - `garra.py`
-  - Esconde os detalhes do vetor enviado para
-    `/gripper_controller/commands`.
-  - A ordem do vetor é `[haste, garra_direita, garra_esquerda]`.
+  - Esconde o formato do vetor enviado para `/gripper_controller/commands`.
+  - Centraliza comandos como abrir, fechar, levantar, baixar e depositar.
 
 - `launch_parametros.py`
-  - Lista única dos argumentos dos launchers.
-  - Evita duplicar dezenas de `DeclareLaunchArgument` em mais de um arquivo.
+  - Lista única de argumentos dos launchers.
+  - Evita duplicar `DeclareLaunchArgument` em vários arquivos.
 
-## Sensores Usados
+## Percepção Visual
 
-### Câmera Semântica
+A câmera semântica publica `/robot_cam/labels_map`. Cada pixel contém uma label
+do objeto visto no Gazebo. O detector filtra a label `25` e calcula:
 
-Tópico: `/robot_cam/labels_map`
-
-Cada pixel da imagem carrega uma classe semântica do Gazebo. O detector usa a
-label `25` para achar a bandeira azul. A partir dessa região, ele calcula:
-
-- centro da bbox;
+- centro do maior blob azul;
 - centro aproximado da haste;
-- erro horizontal normalizado;
-- área relativa da bandeira na imagem;
-- largura e altura da bbox.
+- erro horizontal da bbox;
+- erro horizontal da haste;
+- área relativa;
+- largura e altura da bbox;
+- `fill_ratio`, isto é, quanto da bbox realmente está preenchido por pixels da
+  bandeira;
+- proporção largura/altura da bbox.
 
-A haste é importante porque a garra precisa chegar no poste, não no centro do
-painel azul.
+A posição da haste é mais importante que o centro da bbox inteira, porque a
+garra precisa agarrar o poste, não o meio do tecido.
 
-### LIDAR
+Para aceitar uma estimativa geométrica, o código não usa qualquer blob azul. A
+bbox precisa passar por filtros simples de `fill_ratio` e proporção. Isso evita
+casos em que o robô enxerga só um pedaço do tecido ou só um recorte estranho da
+haste e joga a estimativa para muito longe.
 
-Tópico: `/scan`
+## LIDAR
 
-O LIDAR é a segurança local. Ele responde perguntas como:
+O LIDAR publica `/scan` e serve como segurança local. Ele responde perguntas
+como:
 
-- tem algo perto na frente?
-- tem algo exatamente no centro da frente para a garra fechar?
-- qual lado parece mais livre para desviar?
-- depois da captura, ignorando o centro do scan, ainda tem obstáculo real na
-  frente?
+- existe obstáculo na frente?
+- qual lado tem mais espaço para desviar?
+- a haste da bandeira está logo à frente da garra?
+- durante o retorno, ignorando a faixa central ocupada pela bandeira carregada,
+  ainda existe obstáculo real no caminho?
 
-Durante o retorno para a base, a bandeira fica na frente do robô e poderia ser
-confundida com obstáculo. Por isso `lidar.py` também calcula a frente sem a
-janela central.
+Durante a coleta, a faixa central estreita do LIDAR ajuda a decidir quando
+fechar a garra. Durante o retorno, essa faixa central pode ser ignorada, porque
+a bandeira capturada fica na frente do robô e aparece como obstáculo no sensor.
 
-### Mapa
+## Mapa e Mapper
 
-Tópico: `/grid_map`
+O mapper publica `/grid_map` como `nav_msgs/msg/OccupancyGrid`:
 
-O mapa é usado pelo A*. O controlador converte posições `(x, y)` do mundo para
-células do grid e vice-versa.
+- `-1`: célula desconhecida.
+- `0`: célula livre observada.
+- `100`: célula ocupada confirmada.
 
-No planejador existem duas margens ao redor de obstáculos:
+Obstáculos são persistentes. Quando o LIDAR confirma uma célula ocupada, ela
+continua ocupada no mapa; raios livres posteriores não apagam esse obstáculo.
+Isso deixa o planejamento mais estável em arenas com objetos fixos.
 
-- `inflacao_obstaculo_celulas`: margem dura; essas células viram bloqueadas.
-- `custo_adjacente_obstaculo`: margem suave; células livres encostadas na
-  região bloqueada continuam transitáveis, mas custam mais caro.
+A posição atual do robô não é marcada como obstáculo no grid. Isso evita que o
+planejador tente fugir da própria célula do robô.
 
-### Odometria Ground Truth
+Após capturar a bandeira, o controle publica `true` em `/mapper/congelar`. O
+mapper passa a republicar o último mapa conhecido sem integrar novas leituras.
+Esse congelamento evita que a bandeira presa na garra seja registrada como um
+rastro de obstáculos durante o retorno.
 
-Tópico: `/odom_gt`
+## Planejamento A*
 
-Usada para saber a pose do robô na simulação. A primeira pose recebida vira a
-base: depois de capturar a bandeira, o A* planeja o retorno para essa pose.
+O A* trabalha sobre o `/grid_map`:
+
+- células `100` são bloqueadas;
+- células `0` têm custo normal;
+- células `-1` são permitidas com custo maior, permitindo exploração;
+- células próximas de obstáculos recebem custo adicional;
+- a inflação de obstáculos pode bloquear uma margem dura ao redor deles.
+
+O mesmo planejador é usado para:
+
+- ir até a região estimada da bandeira;
+- explorar uma fronteira desconhecida quando a bandeira fica escondida;
+- retornar para a base depois da captura.
+
+O seguidor de waypoints evita escolher um ponto de seguimento mais perto que
+`tolerancia_waypoint`. Esse detalhe reduz loops em que o robô fica em cima de
+um waypoint, tenta mirar o próximo quase colado e começa a girar sem avançar.
 
 ## Máquina de Estados
 
@@ -178,47 +207,44 @@ EXPLORANDO
 
 Estados de recuperação:
 
-- `DESVIANDO_OBSTACULO` pode interromper quase qualquer estado de movimento.
-  Ao sair do desvio, a máquina tenta voltar ao que fazia antes: replanejar
-  rota, retomar posicionamento visual ou continuar buscando.
-- `PLANEJANDO_EXPLORACAO_DESCONHECIDA` e
-  `SEGUINDO_CAMINHO_EXPLORACAO` são uma recuperação para mapas em que a
-  bandeira fica escondida. Se o robô fica muito tempo sem ver a bandeira, ele
-  escolhe uma fronteira do mapa: uma célula desconhecida encostada em região
-  livre conhecida. O A* leva o robô até essa borda para revelar uma nova parte
-  da arena, e depois a exploração visual normal continua.
-- `REENCONTRANDO_BANDEIRA` é usado quando um desvio perto da coleta tira a
-  bandeira do centro da câmera. O robô gira parado para reenquadrar a bandeira
-  antes de estimar uma nova posição ou voltar ao A*.
-- `FALHA_PLANEJAMENTO` não significa fim da missão. Ele é um estado de espera e
-  recuperação: o robô tenta melhorar a estimativa, receber mapa novo ou
-  replanejar para o alvo congelado.
+- `DESVIANDO_OBSTACULO`: interrompe estados de movimento quando o LIDAR acusa
+  risco de colisão. Ao terminar, replaneja ou volta ao ajuste visual, conforme
+  o que estava acontecendo antes.
+- `REENCONTRANDO_BANDEIRA`: usado perto da coleta. Se um desvio tira a
+  bandeira da câmera, o robô gira parado tentando reenquadrá-la.
+- `FALHA_PLANEJAMENTO`: espera mapa novo, melhora estimativa ou tenta
+  replanejar para o alvo conhecido. Não encerra a missão.
+- `PLANEJANDO_EXPLORACAO_DESCONHECIDA`: busca uma fronteira do mapa quando a
+  bandeira não aparece por muito tempo.
 
-## Como a Bandeira é Capturada
+## Captura da Bandeira
+
+O processo de captura é dividido em etapas:
 
 1. A câmera detecta a bandeira azul.
-2. `estimador_bandeira.py` calcula uma hipótese de posição no mapa.
-3. O A* leva o robô para perto dessa posição, mirando um ponto antes da
-   bandeira para evitar bater direto na haste.
-4. Quando a bandeira ocupa área suficiente na imagem, o controle visual assume
-   e o A* para de interferir no ajuste final.
-5. O robô alinha a haste pelo `erro_x_haste`.
-6. Com a haste alinhada, a bandeira grande o bastante
-   (`area_coleta_bandeira`) e a janela central estreita do LIDAR abaixo de
-   `distancia_coleta_bandeira`, a garra fecha e a haste levanta.
+2. O estimador calcula a melhor hipótese de posição no mapa.
+3. O A* aproxima o robô da região estimada.
+4. Quando a bandeira está útil para posicionamento, o A* para de mandar no
+   ajuste final.
+5. O robô alinha a haste usando `erro_x_haste`.
+6. O robô avança devagar, usando a faixa central do LIDAR para saber quando a
+   haste está próxima da garra.
+7. A garra fecha e a haste levanta.
+8. O mapper é congelado.
 
-## Como o Retorno Funciona
+## Retorno e Entrega
 
-Depois da captura:
+A primeira pose recebida em `/odom_gt` é salva como base. Depois da captura:
 
-1. a pose inicial salva no primeiro callback de odometria é tratada como base;
-2. o A* planeja um caminho até essa pose;
-3. o robô segue os waypoints usando o mesmo seguidor de caminho;
-4. se aparecer obstáculo, entra em desvio e replaneja;
-5. ao chegar na base, a garra abre e a haste desce para depositar a bandeira.
-
-No retorno, a leitura central do LIDAR pode ser ignorada porque a própria
-bandeira fica na frente do sensor.
+1. O A* planeja um caminho até essa base.
+2. O robô segue os waypoints com uma distância de obstáculo própria para o
+   retorno, um pouco mais conservadora.
+3. A faixa central do LIDAR é ignorada para não confundir a bandeira carregada
+   com obstáculo.
+4. Ao chegar na base, a haste desce gradualmente.
+5. A garra abre.
+6. O robô dá uma pequena ré.
+7. A missão entra em `MISSAO_CONCLUIDA`.
 
 ## Parâmetros
 
@@ -228,28 +254,30 @@ Os valores padrão ficam em:
 controle_robo/config/missao_bandeira_azul.yaml
 ```
 
-Cada grupo do YAML tem comentários. Em geral:
+O YAML está comentado por grupos:
 
-- parâmetros de LIDAR mexem em desvio e segurança;
-- parâmetros visuais mexem em detecção, alinhamento e captura;
-- parâmetros de A* mexem em custo, inflação, folga perto de obstáculo,
-  tolerâncias e velocidade;
-- parâmetros de exploração desconhecida controlam o timeout, o cooldown e a
-  escolha de fronteiras quando a bandeira não aparece por muito tempo;
-- parâmetros da garra mexem na abertura e na altura da haste;
-- parâmetros de launch mexem em mundo, atrasos e nomes de tópicos.
+- simulação e launch;
+- tópicos ROS;
+- busca e exploração;
+- LIDAR e desvio;
+- detecção visual;
+- estimativa da bandeira;
+- A* e seguimento de caminho;
+- garra e entrega.
 
-Quando for ajustar comportamento, prefira primeiro mudar o YAML. Mexa no código
-só quando o parâmetro existente não representar a regra que você precisa.
+Quando for ajustar o comportamento, prefira primeiro mudar o YAML. Mexa no
+código quando a regra nova não couber em um parâmetro existente.
 
 ## Como Validar Alterações
 
 Antes de testar no Gazebo:
 
 ```bash
-python3 -m py_compile src/controle_robo/controle_robo/*.py src/controle_robo/launch/*.launch.py
-pytest -q src/controle_robo/test/test_estimador_bandeira.py src/controle_robo/test/test_detector_bandeira.py src/controle_robo/test/test_planejador_grade.py
+cd ~/coding/usp_grad/robos_moveis/ros2_ws
+source /opt/ros/jazzy/setup.bash
+python3 -m py_compile src/controle_robo/controle_robo/*.py src/controle_robo/launch/*.launch.py src/robo_movel/robo_movel/*.py
 colcon build --symlink-install --packages-select robo_movel controle_robo
+source install/setup.bash
 ```
 
 Durante a simulação, os tópicos mais úteis para debug são:
@@ -259,8 +287,14 @@ ros2 topic echo /bandeira_azul/deteccao
 ros2 topic echo /bandeira_azul/debug_info
 ros2 topic echo /bandeira_azul/alvo_estimado --once
 ros2 topic echo /caminho_planejado --once
+ros2 topic echo /mapper/congelar
 ros2 topic echo /gripper_controller/commands
 ```
 
 No RViz, adicione `/grid_map`, `/caminho_planejado` e
-`/bandeira_azul/alvo_estimado` para ver se a estimativa e o A* fazem sentido.
+`/bandeira_azul/alvo_estimado` para verificar se o mapa, a estimativa e o A*
+fazem sentido.
+
+Testes locais podem ser criados em `controle_robo/test/` durante o
+desenvolvimento. Essa pasta fica ignorada pelo Git para não misturar testes
+temporários com a entrega.
