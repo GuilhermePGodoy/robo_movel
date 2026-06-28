@@ -9,7 +9,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from sensor_msgs.msg import Imu, LaserScan
-from std_msgs.msg import Float32MultiArray, Float64MultiArray
+from std_msgs.msg import Bool, Float32MultiArray, Float64MultiArray
 
 from scipy.spatial.transform import Rotation as R
 
@@ -62,6 +62,7 @@ class ControleRobo(Node):
         self.alvo_caminho = None
         self.ultimo_waypoint_bloqueado_final = False
         self.ultimo_replanejamento_visual = -math.inf
+        self.mapper_congelado = None
 
         self.estimador_bandeira = EstimadorBandeira(
             self.fov_horizontal_camera,
@@ -106,6 +107,11 @@ class ControleRobo(Node):
             '/bandeira_azul/alvo_estimado',
             self.qos_visualizacao,
         )
+        self.congelar_mapper_pub = self.create_publisher(
+            Bool,
+            '/mapper/congelar',
+            10,
+        )
 
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.create_subscription(Imu, '/imu', self.imu_callback, 10)
@@ -125,6 +131,7 @@ class ControleRobo(Node):
 
         self.maquina_estados = MaquinaEstadosMissao(self)
         self.timer = self.create_timer(0.1, self.maquina_estados.executar)
+        self.publicar_congelamento_mapper(False, forcar=True)
 
         self.get_logger().info(
             'CONTROLE | estado_inicial=EXPLORANDO | objetivo=bandeira_azul'
@@ -922,6 +929,43 @@ class ControleRobo(Node):
             self.tolerancia_waypoint,
             self.distancia_lookahead_waypoint,
         )
+        distancia_minima = max(0.05, self.tolerancia_waypoint)
+        tentativas = 0
+
+        while self.caminho_ativo() and tentativas <= len(self.caminho_planejado):
+            resultado = self.calcular_ponto_de_seguimento(lookahead)
+            if resultado is None:
+                return None
+
+            indice_alvo, ponto = resultado
+            distancia = math.hypot(ponto[0] - self.x, ponto[1] - self.y)
+            if distancia >= distancia_minima:
+                return resultado
+
+            self.log_periodico(
+                'ponto_seguimento_muito_perto',
+                (
+                    'A* | ponto_seguimento_ignorado=sim | '
+                    f'dist={distancia:.2f}m, '
+                    f'min={distancia_minima:.2f}m, '
+                    f'wp={self.indice_waypoint + 1}->{indice_alvo + 1}/'
+                    f'{len(self.caminho_planejado)}'
+                ),
+                periodo=1.0,
+            )
+            self.indice_waypoint = min(
+                max(self.indice_waypoint + 1, indice_alvo),
+                len(self.caminho_planejado),
+            )
+            self.pular_waypoints_proximos()
+            tentativas += 1
+
+        return None
+
+    def calcular_ponto_de_seguimento(self, lookahead):
+        if not self.caminho_ativo():
+            return None
+
         ultimo_indice = len(self.caminho_planejado) - 1
         primeiro = self.caminho_planejado[self.indice_waypoint]
         distancia_ate_primeiro = math.hypot(
@@ -1157,6 +1201,23 @@ class ControleRobo(Node):
         comando = Float64MultiArray()
         comando.data = [float(posicao) for posicao in posicoes]
         self.garra_pub.publish(comando)
+
+    def publicar_congelamento_mapper(self, congelar: bool, forcar: bool = False):
+        congelar = bool(congelar)
+        if not forcar and self.mapper_congelado == congelar:
+            return
+
+        msg = Bool()
+        msg.data = congelar
+        self.congelar_mapper_pub.publish(msg)
+        self.mapper_congelado = congelar
+
+        estado = 'congelado' if congelar else 'ativo'
+        self.log_periodico(
+            'mapper_congelamento',
+            f'MAPPER | comando={estado}',
+            periodo=1.0,
+        )
 
     def publicar_velocidade(self, linear: float, angular: float):
         cmd_vel = TwistStamped()

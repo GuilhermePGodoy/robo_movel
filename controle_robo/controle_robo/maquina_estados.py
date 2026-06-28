@@ -817,6 +817,7 @@ class MaquinaEstadosMissao:
         robo.publicar_velocidade(0.0, 0.0)
         self.fechar_garra(forcar=True)
         self.bandeira_capturada = True
+        robo.publicar_congelamento_mapper(True, forcar=True)
 
         tempo_no_estado = time.monotonic() - self.instante_inicio_estado
         if tempo_no_estado >= 1.0:

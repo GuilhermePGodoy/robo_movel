@@ -38,7 +38,7 @@ controle_robo:
     # Velocidade angular base das manobras de desvio.
     velocidade_angular_desvio: -0.4
     # Distancia frontal minima para considerar que ha obstaculo.
-    distancia_obstaculo: 0.6
+    distancia_obstaculo: 0.65
     # Durante o retorno, o robo esta carregando a bandeira e precisa reagir um
     # pouco antes para manobrar sem encostar a garra/haste nos obstaculos.
     distancia_obstaculo_retorno: 0.7
@@ -150,10 +150,10 @@ controle_robo:
     # Custo de celulas desconhecidas no A*. Permite explorar, mas com cautela.
     custo_desconhecido: 3.0
     # Margem em celulas ao redor de obstaculos do mapa.
-    inflacao_obstaculo_celulas: 1
+    inflacao_obstaculo_celulas: 0
     # Peso extra para celulas livres logo ao lado da regiao bloqueada.
     # Aumente para o A* preferir caminhos mais afastados de obstaculos.
-    custo_adjacente_obstaculo: 2.0
+    custo_adjacente_obstaculo: 3.0
     # Distancia para considerar um waypoint ou alvo planejado alcancado.
     tolerancia_waypoint: 0.25
     tolerancia_alvo_planejado: 0.6

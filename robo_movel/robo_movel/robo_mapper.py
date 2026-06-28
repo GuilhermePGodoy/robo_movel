@@ -7,6 +7,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Pose
+from std_msgs.msg import Bool
 
 from scipy.spatial.transform import Rotation as R
 
@@ -25,6 +26,7 @@ class RoboMapper(Node):
         # Subscribers
         self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.create_subscription(Pose, '/model/prm_robot/pose', self.odom_callback, 10)
+        self.create_subscription(Bool, '/mapper/congelar', self.congelar_callback, 10)
 
         # Timer para enviar comandos continuamente
         self.timer = self.create_timer(0.5, self.atualiza_mapa)
@@ -34,6 +36,7 @@ class RoboMapper(Node):
         self.y = 0
         self.heading = 0
         self.ultimo_scan = None
+        self.mapa_congelado = False
 
         # Atributos de configuração do mapa
         # Parametros do mapa. Com 100 celulas a 25 cm, cobrimos 25 x 25 m,
@@ -69,6 +72,15 @@ class RoboMapper(Node):
     def scan_callback(self, msg: LaserScan):
         self.ultimo_scan = msg
 
+    def congelar_callback(self, msg: Bool):
+        congelar = bool(msg.data)
+        if congelar == self.mapa_congelado:
+            return
+
+        self.mapa_congelado = congelar
+        estado = 'congelado' if congelar else 'ativo'
+        self.get_logger().info(f'MAPPER | estado={estado}')
+
     def odom_callback(self, msg: Pose):
         # Extrair posição
         self.x = msg.position.x
@@ -92,7 +104,12 @@ class RoboMapper(Node):
         return gx, gy
 
     def atualiza_mapa(self):
-        if self.ultimo_scan is not None:
+        if self.mapa_congelado:
+            self.get_logger().info(
+                'Mapper congelado; republicando ultimo /grid_map.',
+                throttle_duration_sec=3.0,
+            )
+        elif self.ultimo_scan is not None:
             self.integrar_lidar(self.ultimo_scan)
         else:
             self.get_logger().warn(
@@ -100,11 +117,9 @@ class RoboMapper(Node):
                 throttle_duration_sec=3.0,
             )
 
-        # Marcar a posicao atual do robo no mapa por ultimo para ela ficar
-        # visivel mesmo quando um raio do LIDAR passa pela mesma celula.
-        gx, gy = self.world_to_grid(self.x, self.y)
-        if 0 <= gx < self.grid_size and 0 <= gy < self.grid_size:
-            self.grid_map[gy, gx] = 100
+        # A posicao do robo nao entra como obstaculo no OccupancyGrid.
+        # Quando marcavamos essa celula como 100, o A* podia interpretar o
+        # proprio rastro do robo como parede.
 
         # Publicar o mapa
         self.publish_occupancy_grid()
@@ -146,7 +161,11 @@ class RoboMapper(Node):
 
         for gx, gy in celulas[:-1]:
             if self.celula_valida(gx, gy):
-                self.grid_map[gy, gx] = 0
+                # Obstaculos confirmados ficam persistentes. Em uma arena
+                # estatica, um raio livre posterior nao deve apagar uma parede
+                # ou cilindro ja observado.
+                if self.grid_map[gy, gx] != 100:
+                    self.grid_map[gy, gx] = 0
 
         fim_x, fim_y = celulas[-1]
         if marca_obstaculo and self.celula_valida(fim_x, fim_y):
