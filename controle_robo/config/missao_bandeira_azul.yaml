@@ -113,6 +113,13 @@ controle_robo:
     garra_extensao_captura: -0.8
     garra_direita_captura: 0.0
     garra_esquerda_captura: 0.0
+    # Na base, a haste desce aos poucos antes de abrir a garra.
+    tempo_descida_garra_base: 1.6
+    # Pequena pausa abrindo a garra antes de afastar o robo.
+    tempo_abertura_garra_base: 1.0
+    # Re curta depois de depositar a bandeira.
+    velocidade_re_entrega: 0.10
+    tempo_re_entrega: 1.2
 
     # ----------------------------
     # Planejamento por mapa

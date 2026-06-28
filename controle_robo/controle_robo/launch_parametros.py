@@ -222,6 +222,30 @@ PARAMETROS_CONTROLE = [
         float,
     ),
     Argumento(
+        'tempo_descida_garra_base',
+        '1.6',
+        'Tempo para baixar a haste ao depositar a bandeira',
+        float,
+    ),
+    Argumento(
+        'tempo_abertura_garra_base',
+        '0.5',
+        'Pausa com a garra aberta antes da re na base',
+        float,
+    ),
+    Argumento(
+        'velocidade_re_entrega',
+        '0.10',
+        'Velocidade linear da pequena re apos entregar a bandeira',
+        float,
+    ),
+    Argumento(
+        'tempo_re_entrega',
+        '0.8',
+        'Duracao da pequena re apos entregar a bandeira',
+        float,
+    ),
+    Argumento(
         'usar_planejamento_grade',
         'true',
         'Ativa navegacao por /grid_map e A*',

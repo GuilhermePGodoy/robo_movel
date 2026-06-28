@@ -170,6 +170,10 @@ class ControleRobo(Node):
         self.declare_parameter('garra_extensao_captura', -0.8)
         self.declare_parameter('garra_direita_captura', 0.0)
         self.declare_parameter('garra_esquerda_captura', 0.0)
+        self.declare_parameter('tempo_descida_garra_base', 1.6)
+        self.declare_parameter('tempo_abertura_garra_base', 0.5)
+        self.declare_parameter('velocidade_re_entrega', 0.10)
+        self.declare_parameter('tempo_re_entrega', 0.8)
         self.declare_parameter('usar_planejamento_grade', True)
         self.declare_parameter('topico_mapa', '/grid_map')
         self.declare_parameter('habilitar_exploracao_desconhecida', True)
@@ -309,6 +313,21 @@ class ControleRobo(Node):
             self.comando_garra_captura[1],
             self.comando_garra_captura[2],
         ]
+        self.tempo_descida_garra_base = max(
+            0.1,
+            float(self.get_parameter('tempo_descida_garra_base').value),
+        )
+        self.tempo_abertura_garra_base = max(
+            0.0,
+            float(self.get_parameter('tempo_abertura_garra_base').value),
+        )
+        self.velocidade_re_entrega = abs(float(
+            self.get_parameter('velocidade_re_entrega').value
+        ))
+        self.tempo_re_entrega = max(
+            0.0,
+            float(self.get_parameter('tempo_re_entrega').value),
+        )
         self.usar_planejamento_grade = bool(
             self.get_parameter('usar_planejamento_grade').value
         )

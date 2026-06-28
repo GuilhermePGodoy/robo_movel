@@ -910,22 +910,69 @@ class MaquinaEstadosMissao:
 
     def estado_entregando_bandeira(self):
         robo = self.robo
+        tempo_no_estado = time.monotonic() - self.instante_inicio_estado
+
+        tempo_descida = robo.tempo_descida_garra_base
+        tempo_abertura = robo.tempo_abertura_garra_base
+        tempo_re = robo.tempo_re_entrega
+
+        if tempo_no_estado < tempo_descida:
+            progresso = self.robo.limitar(tempo_no_estado / tempo_descida, 0.0, 1.0)
+            extensao_inicial = robo.comando_garra_captura[0]
+            extensao_final = robo.comando_garra_aberta[0]
+            extensao = (
+                extensao_inicial
+                + progresso * (extensao_final - extensao_inicial)
+            )
+            comando = [
+                extensao,
+                robo.comando_garra_captura[1],
+                robo.comando_garra_captura[2],
+            ]
+            robo.publicar_velocidade(0.0, 0.0)
+            robo.publicar_garra(comando)
+            self.log_estado_periodico(
+                (
+                    'acao=baixar_haste | '
+                    f'progresso={progresso:.2f}, '
+                    f'cmd=[{comando[0]:.2f}, {comando[1]:.2f}, '
+                    f'{comando[2]:.2f}]'
+                ),
+                periodo=0.4,
+            )
+            return
+
+        if tempo_no_estado < tempo_descida + tempo_abertura:
+            robo.publicar_velocidade(0.0, 0.0)
+            self.soltar_garra(forcar=True)
+            self.log_estado_periodico(
+                'acao=abrir_garra | motivo=depositar_bandeira | cmd=(0.00, 0.00)',
+                periodo=0.4,
+            )
+            return
+
+        if tempo_no_estado < tempo_descida + tempo_abertura + tempo_re:
+            self.soltar_garra(forcar=True)
+            linear = -robo.velocidade_re_entrega
+            robo.publicar_velocidade(linear, 0.0)
+            self.log_estado_periodico(
+                (
+                    'acao=re_pos_entrega | '
+                    f'cmd=({linear:.2f}, 0.00)'
+                ),
+                periodo=0.4,
+            )
+            return
+
         robo.publicar_velocidade(0.0, 0.0)
         self.soltar_garra(forcar=True)
-
-        tempo_no_estado = time.monotonic() - self.instante_inicio_estado
-        if tempo_no_estado >= 1.0:
+        if tempo_no_estado >= tempo_descida + tempo_abertura + tempo_re:
             self.bandeira_entregue = True
             self.trocar_estado(
                 EstadoMissao.MISSAO_CONCLUIDA,
                 'bandeira depositada na base inicial',
             )
             return
-
-        self.log_estado_periodico(
-            'acao=abrir_garra | motivo=depositar_bandeira | cmd=(0.00, 0.00)',
-            periodo=0.5,
-        )
 
     def estado_missao_concluida(self):
         self.robo.publicar_velocidade(0.0, 0.0)
